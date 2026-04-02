@@ -39,7 +39,11 @@
       "better-sqlite3",
       "esbuild",
       "onnxruntime-node"
-    ]
+    ],
+    "overrides": {
+      "@huggingface/transformers>onnxruntime-web": "npm:empty-npm-package@1.0.0",
+      "@huggingface/transformers>sharp": "npm:empty-npm-package@1.0.0"
+    }
   },
   "dependencies": {
     "@huggingface/transformers": "^4.0.0",

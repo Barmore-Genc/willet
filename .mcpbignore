@@ -7,3 +7,23 @@ tsconfig.json
 vite.config.ts
 *.ts
 !dist/**
+
+# Dev dependencies that shouldn't be in the bundle
+node_modules/.pnpm/typescript@*
+node_modules/.pnpm/vite@*
+node_modules/.pnpm/tsx@*
+node_modules/.pnpm/esbuild@*
+node_modules/.pnpm/@esbuild+*
+node_modules/.pnpm/rolldown@*
+node_modules/.pnpm/@rolldown+*
+node_modules/.pnpm/rollup@*
+node_modules/.pnpm/lightningcss@*
+node_modules/.pnpm/lightningcss-*
+node_modules/.pnpm/vite-plugin-singlefile@*
+node_modules/.pnpm/cross-env@*
+node_modules/.pnpm/@types+*
+
+# Unused transitive deps from @huggingface/transformers
+node_modules/.pnpm/onnxruntime-web@*
+node_modules/.pnpm/sharp@*
+node_modules/.pnpm/@img+*
