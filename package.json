@@ -25,7 +25,7 @@
   "scripts": {
     "build": "npm run build:views && tsc",
     "build:server": "tsc",
-    "build:views": "INPUT=views/dependency-graph/index.html vite build && INPUT=views/task-board/index.html vite build && INPUT=views/project-stats/index.html vite build",
+    "build:views": "cross-env INPUT=views/dependency-graph/index.html vite build && cross-env INPUT=views/task-board/index.html vite build && cross-env INPUT=views/project-stats/index.html vite build",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -61,6 +61,7 @@
     "@types/d3-selection": "^3.0.11",
     "@types/d3-zoom": "^3.0.8",
     "@types/node": "^25.5.0",
+    "cross-env": "^10.1.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.3",
