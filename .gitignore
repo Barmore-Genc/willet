@@ -1,0 +1,7 @@
+node_modules/
+dist/
+
+# Machine-specific config
+.mcp.json
+.claude/settings.local.json
+.claude/preview-graph.html
