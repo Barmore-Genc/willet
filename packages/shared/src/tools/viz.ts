@@ -28,12 +28,30 @@ function resolveDb(projectId?: string) {
 }
 
 // Path to bundled view HTML files
-const VIEWS_DIR = import.meta.filename.endsWith(".ts")
-  ? path.join(import.meta.dirname, "..", "..", "dist", "views")
-  : path.join(import.meta.dirname, "..", "views");
+// Resolve views directory — works for:
+// - Dev (ts-node): src/tools/ → ../../dist/views/views/
+// - Shared dist:   dist/tools/ → ../views/views/
+// - esbuild bundle / mcpb: dist/ → ../views/views/
+async function findViewsDir(): Promise<string> {
+  const dir = import.meta.dirname;
+  const candidates = [
+    path.join(dir, "..", "views", "views"),
+    path.join(dir, "..", "..", "dist", "views", "views"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {}
+  }
+  return candidates[0];
+}
+
+const viewsDirPromise = findViewsDir();
 
 async function loadView(name: string): Promise<string> {
-  return fs.readFile(path.join(VIEWS_DIR, "views", name, "index.html"), "utf-8");
+  const viewsDir = await viewsDirPromise;
+  return fs.readFile(path.join(viewsDir, name, "index.html"), "utf-8");
 }
 
 const STATUS_ORDER = ["open", "in_progress", "done", "cancelled"];

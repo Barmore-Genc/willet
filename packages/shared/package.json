@@ -1,0 +1,42 @@
+{
+  "name": "@willet/shared",
+  "version": "1.0.0",
+  "description": "Willet core — types, database, embeddings, and tool definitions",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "npm run build:views && tsc",
+    "check": "tsc",
+    "build:server": "tsc",
+    "build:views": "cross-env INPUT=views/dependency-graph/index.html vite build && cross-env INPUT=views/task-board/index.html vite build && cross-env INPUT=views/project-stats/index.html vite build"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.0.0",
+    "@modelcontextprotocol/ext-apps": "^1.4.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.8.0",
+    "d3-drag": "^3.0.0",
+    "d3-force": "^3.0.0",
+    "d3-selection": "^3.0.0",
+    "d3-zoom": "^3.0.0",
+    "onnxruntime-node": "^1.24.3",
+    "ulid": "^3.0.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/d3-drag": "^3.0.7",
+    "@types/d3-force": "^3.0.10",
+    "@types/d3-selection": "^3.0.11",
+    "@types/d3-zoom": "^3.0.8",
+    "@types/node": "^25.5.0",
+    "cross-env": "^10.1.0",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3",
+    "vite-plugin-singlefile": "^2.3.2"
+  }
+}

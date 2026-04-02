@@ -1,0 +1,13 @@
+services:
+  willet:
+    build:
+      context: ../..
+      dockerfile: packages/server/Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - willet-data:/data
+      - ./willet.toml:/config/willet.toml:ro
+
+volumes:
+  willet-data:

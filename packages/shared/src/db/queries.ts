@@ -4,6 +4,7 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { ulid } from "ulid";
+import { getCurrentUser } from "../context.js";
 import {
   embed,
   cosineSimilarity,
@@ -28,7 +29,7 @@ import type {
 
 // --- Paths ---
 
-const BASE_DIR = join(homedir(), ".willet");
+const BASE_DIR = process.env.WILLET_DATA_DIR || join(homedir(), ".willet");
 const REGISTRY_PATH = join(BASE_DIR, "registry.db");
 
 // --- DB connection cache ---
@@ -94,15 +95,16 @@ export function listProjects(nameFilter?: string): Project[] {
     .all() as Project[];
 }
 
-export function initProject(name: string, directory: string): Project {
-  const existing = resolveProject(directory);
+export function initProject(name: string, directory?: string): Project {
+  const dir = directory || name;
+  const existing = resolveProject(dir);
   if (existing) return existing;
 
   const db = getRegistryDb();
   const project: Project = {
     id: ulid(),
     name,
-    directory,
+    directory: dir,
     created_at: new Date().toISOString(),
   };
 
@@ -153,12 +155,11 @@ function recordChange(
   taskId: string,
   field: string,
   oldValue: string | null,
-  newValue: string | null,
-  changedBy: string = "local"
+  newValue: string | null
 ): void {
   db.prepare(
     "INSERT INTO task_history (id, task_id, field_changed, old_value, new_value, changed_at, changed_by) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(ulid(), taskId, field, oldValue, newValue, new Date().toISOString(), changedBy);
+  ).run(ulid(), taskId, field, oldValue, newValue, new Date().toISOString(), getCurrentUser());
 }
 
 // --- Row to entity helpers ---
@@ -413,7 +414,7 @@ export function addComment(
     task_id: taskId,
     content,
     created_at: new Date().toISOString(),
-    created_by: "local",
+    created_by: getCurrentUser(),
   };
 
   db.prepare(

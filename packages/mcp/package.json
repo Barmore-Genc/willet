@@ -1,0 +1,47 @@
+{
+  "name": "@willet/mcp",
+  "version": "1.0.0",
+  "description": "Willet MCP server — local stdio transport",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "willet-mcp": "bin/willet-mcp.js"
+  },
+  "files": [
+    "dist/",
+    "bin/"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SeriousBug/willet.git"
+  },
+  "homepage": "https://github.com/SeriousBug/willet",
+  "bugs": {
+    "url": "https://github.com/SeriousBug/willet/issues"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "node build.js",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.0.0",
+    "better-sqlite3": "^12.8.0",
+    "onnxruntime-node": "^1.24.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/ext-apps": "^1.4.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/node": "^25.5.0",
+    "@willet/shared": "workspace:*",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "ulid": "^3.0.2",
+    "zod": "^4.3.6"
+  }
+}

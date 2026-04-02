@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build-and-test:
@@ -32,42 +33,46 @@ jobs:
           cache: "pnpm"
       - run: pnpm install
       - run: pnpm run build
-      - run: npm pack
+      - run: cd packages/mcp && npm pack
       - uses: actions/upload-artifact@v6
         with:
           name: npm-package
-          path: "*.tgz"
+          path: "packages/mcp/*.tgz"
 
-  mcpb-bundle:
+  docker:
     needs: build-and-test
-    strategy:
-      matrix:
-        include:
-          - os: macos-latest
-            platform: darwin-arm64
-          - os: ubuntu-latest
-            platform: linux-x64
-          - os: windows-latest
-            platform: win32-x64
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v5
-      - uses: actions/setup-node@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          node-version: "22"
-          cache: "pnpm"
-      - run: pnpm install
-      - run: pnpm run build
-      - run: pnpm install --prod
-      - run: npx @anthropic-ai/mcpb pack . willet-${{ matrix.platform }}.mcpb
-      - uses: actions/upload-artifact@v6
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
         with:
-          name: mcpb-${{ matrix.platform }}
-          path: "*.mcpb"
+          context: .
+          file: packages/server/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   release:
-    needs: [mcpb-bundle, npm-pack]
+    needs: [npm-pack, docker]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -79,10 +84,10 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            artifacts/*.mcpb
             artifacts/*.tgz
 
       # Uncomment when npm credentials are configured:
+      # @willet/shared must be published before @willet/mcp (mcp depends on it).
       #
       # - uses: actions/checkout@v6
       # - uses: pnpm/action-setup@v5
@@ -92,16 +97,11 @@ jobs:
       #     registry-url: "https://registry.npmjs.org"
       # - run: pnpm install
       # - run: pnpm run build
-      # - name: Publish to npm
-      #   run: npm publish
+      # - name: Publish @willet/shared to npm
+      #   run: cd packages/shared && npm publish --access public
       #   env:
       #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      #
-      # - uses: actions/setup-node@v6
-      #   with:
-      #     node-version: "22"
-      #     registry-url: "https://npm.pkg.github.com"
-      # - name: Publish to GitHub Packages
-      #   run: npm publish
+      # - name: Publish @willet/mcp to npm
+      #   run: cd packages/mcp && npm publish --access public
       #   env:
-      #     NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

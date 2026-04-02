@@ -1,0 +1,9 @@
+[server]
+port = 3000
+base_url = "https://willet.example.com"
+
+[users.alice]
+secret = "change-me-to-a-random-string"
+
+[users.bob]
+secret = "change-me-to-another-random-string"

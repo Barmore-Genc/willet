@@ -1,0 +1,7 @@
+node_modules
+.git
+.claude
+*.md
+packages/*/dist
+packages/*/node_modules
+packages/mcp

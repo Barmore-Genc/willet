@@ -1,0 +1,28 @@
+{
+  "name": "@willet/server",
+  "version": "1.0.0",
+  "description": "Willet HTTP server — deployed version with OAuth auth",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@willet/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.2.1",
+    "smol-toml": "^1.6.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  }
+}

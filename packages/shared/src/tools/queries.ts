@@ -30,12 +30,26 @@ function resolveDb(projectId?: string) {
   return getProjectDb(project.id);
 }
 
-const VIEWS_DIR = import.meta.filename.endsWith(".ts")
-  ? path.join(import.meta.dirname, "..", "..", "dist", "views")
-  : path.join(import.meta.dirname, "..", "views");
+async function findViewsDir(): Promise<string> {
+  const dir = import.meta.dirname;
+  const candidates = [
+    path.join(dir, "..", "views", "views"),
+    path.join(dir, "..", "..", "dist", "views", "views"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {}
+  }
+  return candidates[0];
+}
+
+const viewsDirPromise = findViewsDir();
 
 async function loadView(name: string): Promise<string> {
-  return fs.readFile(path.join(VIEWS_DIR, "views", name, "index.html"), "utf-8");
+  const viewsDir = await viewsDirPromise;
+  return fs.readFile(path.join(viewsDir, name, "index.html"), "utf-8");
 }
 
 export function registerQueryTools(server: McpServer): void {
