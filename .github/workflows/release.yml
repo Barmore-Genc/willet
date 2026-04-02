@@ -11,9 +11,9 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "pnpm"
@@ -24,16 +24,16 @@ jobs:
     needs: build-and-test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "pnpm"
       - run: pnpm install
       - run: pnpm run build
       - run: npm pack
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: npm-package
           path: "*.tgz"
@@ -51,9 +51,9 @@ jobs:
             platform: win32-x64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "pnpm"
@@ -61,7 +61,7 @@ jobs:
       - run: pnpm run build
       - run: pnpm install --prod
       - run: npx @anthropic-ai/mcpb pack . willet-${{ matrix.platform }}.mcpb
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: mcpb-${{ matrix.platform }}
           path: "*.mcpb"
@@ -70,7 +70,7 @@ jobs:
     needs: [mcpb-bundle, npm-pack]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
@@ -84,9 +84,9 @@ jobs:
 
       # Uncomment when npm credentials are configured:
       #
-      # - uses: actions/checkout@v4
-      # - uses: pnpm/action-setup@v4
-      # - uses: actions/setup-node@v4
+      # - uses: actions/checkout@v6
+      # - uses: pnpm/action-setup@v5
+      # - uses: actions/setup-node@v6
       #   with:
       #     node-version: "22"
       #     registry-url: "https://registry.npmjs.org"
@@ -97,7 +97,7 @@ jobs:
       #   env:
       #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       #
-      # - uses: actions/setup-node@v4
+      # - uses: actions/setup-node@v6
       #   with:
       #     node-version: "22"
       #     registry-url: "https://npm.pkg.github.com"
