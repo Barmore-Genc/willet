@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install
+      - run: pnpm run build
+
+  npm-pack:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install
+      - run: pnpm run build
+      - run: npm pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: "*.tgz"
+
+  mcpb-bundle:
+    needs: build-and-test
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin-arm64
+          - os: macos-13
+            platform: darwin-x64
+          - os: ubuntu-latest
+            platform: linux-x64
+          - os: windows-latest
+            platform: win32-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - run: pnpm install --prod
+      - run: pnpm install --dev
+      - run: pnpm run build
+      - run: npx @anthropic-ai/mcpb pack . willet-${{ matrix.platform }}.mcpb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcpb-${{ matrix.platform }}
+          path: "*.mcpb"
+
+  release:
+    needs: [mcpb-bundle, npm-pack]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/*.mcpb
+            artifacts/*.tgz
+
+      # Uncomment when npm credentials are configured:
+      #
+      # - uses: actions/checkout@v4
+      # - uses: pnpm/action-setup@v4
+      # - uses: actions/setup-node@v4
+      #   with:
+      #     node-version: "22"
+      #     registry-url: "https://registry.npmjs.org"
+      # - run: pnpm install
+      # - run: pnpm run build
+      # - name: Publish to npm
+      #   run: npm publish
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      #
+      # - uses: actions/setup-node@v4
+      #   with:
+      #     node-version: "22"
+      #     registry-url: "https://npm.pkg.github.com"
+      # - name: Publish to GitHub Packages
+      #   run: npm publish
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

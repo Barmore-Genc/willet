@@ -80,7 +80,7 @@ export function registerQueryTools(server: McpServer): void {
 
   // --- Project Stats (App-enhanced) ---
 
-  const statsUri = "ui://task-manager/project-stats.html";
+  const statsUri = "ui://willet/project-stats.html";
 
   registerAppResource(
     server,

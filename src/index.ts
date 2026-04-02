@@ -13,7 +13,7 @@ async function main() {
   await initEmbeddings();
 
   const server = new McpServer({
-    name: "task-manager",
+    name: "willet",
     version: "1.0.0",
   });
 

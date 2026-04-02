@@ -28,7 +28,7 @@ import type {
 
 // --- Paths ---
 
-const BASE_DIR = join(homedir(), ".task-manager");
+const BASE_DIR = join(homedir(), ".willet");
 const REGISTRY_PATH = join(BASE_DIR, "registry.db");
 
 // --- DB connection cache ---

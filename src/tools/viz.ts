@@ -144,7 +144,7 @@ function renderDependencyGraphText(
 export function registerVizTools(server: McpServer): void {
   // --- Task Board (App-enhanced) ---
 
-  const boardUri = "ui://task-manager/task-board.html";
+  const boardUri = "ui://willet/task-board.html";
 
   registerAppResource(
     server,
@@ -182,7 +182,7 @@ export function registerVizTools(server: McpServer): void {
 
   // --- Dependency Graph (App-enhanced) ---
 
-  const depGraphUri = "ui://task-manager/dependency-graph.html";
+  const depGraphUri = "ui://willet/dependency-graph.html";
 
   registerAppResource(
     server,

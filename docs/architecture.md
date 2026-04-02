@@ -2,7 +2,7 @@
 
 ## Storage
 
-Each project gets its own SQLite database at `~/.task-manager/projects/<project-id>/tasks.db`. Project-to-directory mapping is stored in a root database at `~/.task-manager/registry.db`.
+Each project gets its own SQLite database at `~/.willet/projects/<project-id>/tasks.db`. Project-to-directory mapping is stored in a root database at `~/.willet/registry.db`.
 
 This approach:
 - Naturally isolates projects (no `WHERE project_id = ?` everywhere)
@@ -13,7 +13,7 @@ This approach:
 ### Registry Database
 
 ```sql
--- ~/.task-manager/registry.db
+-- ~/.willet/registry.db
 CREATE TABLE projects (
     id TEXT PRIMARY KEY,           -- ULID
     name TEXT NOT NULL,
@@ -123,7 +123,7 @@ The `recordChange(taskId, field, oldValue, newValue, changedBy)` helper must be 
 
 ## Embeddings
 
-Local embeddings via ONNX Runtime running `all-MiniLM-L6-v2` (384 dimensions, ~80MB model). The model is downloaded on first use and cached at `~/.task-manager/models/`.
+Local embeddings via ONNX Runtime running `all-MiniLM-L6-v2` (384 dimensions, ~80MB model). The model is downloaded on first use and cached at `~/.willet/models/`.
 
 ### How It Works
 

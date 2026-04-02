@@ -1,9 +1,27 @@
 {
-  "name": "task-manager",
+  "name": "willet-mcp",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "A local-first task tracking MCP server for AI agents",
+  "main": "dist/index.js",
   "type": "module",
+  "bin": {
+    "willet-mcp": "bin/willet-mcp.js"
+  },
+  "files": [
+    "dist/",
+    "bin/"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SeriousBug/willet.git"
+  },
+  "homepage": "https://github.com/SeriousBug/willet",
+  "bugs": {
+    "url": "https://github.com/SeriousBug/willet/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "build": "npm run build:views && tsc",
     "build:server": "tsc",

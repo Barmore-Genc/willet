@@ -1,11 +1,11 @@
-# Task Manager MCP Server
+# Willet
 
 A local-first task tracking MCP server for AI agents (Claude Code). Think Jira/Linear but operated entirely through MCP tools.
 
 ## Quick Reference
 
 - **Language**: TypeScript, Node.js
-- **Storage**: SQLite per project via `better-sqlite3` (~/.task-manager/projects/<id>/tasks.db)
+- **Storage**: SQLite per project via `better-sqlite3` (~/.willet/projects/<id>/tasks.db)
 - **Search**: FTS5 for text, local ONNX embeddings (`all-MiniLM-L6-v2`) for vector similarity
 - **MCP transport**: stdio (local), designed to migrate to SSE/streamable HTTP + OAuth later
 
