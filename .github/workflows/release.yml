@@ -57,9 +57,9 @@ jobs:
         with:
           node-version: "22"
           cache: "pnpm"
-      - run: pnpm install --prod
-      - run: pnpm install --dev
+      - run: pnpm install
       - run: pnpm run build
+      - run: pnpm install --prod
       - run: npx @anthropic-ai/mcpb pack . willet-${{ matrix.platform }}.mcpb
       - uses: actions/upload-artifact@v4
         with:
