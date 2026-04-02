@@ -5,7 +5,9 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:views && tsc",
+    "build:server": "tsc",
+    "build:views": "INPUT=views/dependency-graph/index.html vite build && INPUT=views/task-board/index.html vite build && INPUT=views/project-stats/index.html vite build",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -23,16 +25,27 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.0.0",
+    "@modelcontextprotocol/ext-apps": "^1.4.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.8.0",
+    "d3-drag": "^3.0.0",
+    "d3-force": "^3.0.0",
+    "d3-selection": "^3.0.0",
+    "d3-zoom": "^3.0.0",
     "onnxruntime-node": "^1.24.3",
     "ulid": "^3.0.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/d3-drag": "^3.0.7",
+    "@types/d3-force": "^3.0.10",
+    "@types/d3-selection": "^3.0.11",
+    "@types/d3-zoom": "^3.0.8",
     "@types/node": "^25.5.0",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3",
+    "vite-plugin-singlefile": "^2.3.2"
   }
 }

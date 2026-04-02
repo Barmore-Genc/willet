@@ -16,9 +16,9 @@ Get the project associated with the current working directory.
 ## Task CRUD
 
 ### create_task
-- **Params**: `title` (required), `description`, `type` (task|bug|feature|epic), `priority` (low|medium|high|urgent), `estimate`, `tags` (string[]), `parent_task_id`, `metadata` (object)
-- **Behavior**: Creates task with status "open". Records history entry for creation. Generates and stores embedding.
-- **Returns**: Full task object.
+- **Params**: `title` (required), `description`, `type` (task|bug|feature|epic), `priority` (low|medium|high|urgent), `estimate`, `tags` (string[]), `parent_task_id`, `metadata` (object), `links` (array of `{ target_task_id, link_type }`), `initial_comment` (string)
+- **Behavior**: Creates task with status "open". Records history entry for creation. Generates and stores embedding. Optionally creates links and/or an initial comment atomically.
+- **Returns**: Full task object (with links and comment if created).
 
 ### update_task
 - **Params**: `task_id` (required), plus any fields to update: `title`, `description`, `type`, `priority`, `estimate`, `tags`, `parent_task_id`, `metadata`
@@ -26,8 +26,8 @@ Get the project associated with the current working directory.
 - **Returns**: Full updated task object.
 
 ### get_task
-- **Params**: `task_id` (required), `include_comments` (bool, default false), `include_history` (bool, default false), `include_links` (bool, default false)
-- **Returns**: Task object, optionally with comments, history, and/or links.
+- **Params**: `task_id` (required), `include_comments` (bool, default false), `include_history` (bool, default false), `include_links` (bool, default false), `include_subtasks` (bool, default false)
+- **Returns**: Task object, optionally with comments, history, links, and/or subtasks.
 
 ### delete_task
 - **Params**: `task_id` (required)
@@ -96,7 +96,9 @@ Combined text and semantic search.
 - **Params**:
   - `query` (required) — the search string
   - `mode` — `text` (FTS5), `semantic` (vector), or `hybrid` (both, default)
-  - `status` — optional filter applied post-search
+  - `status` — optional filter (single value or array)
+  - `type` — optional filter (single value or array)
+  - `priority` — optional filter (single value or array)
   - `limit` — max results (default: 20)
 - **Behavior**:
   - `text` mode: FTS5 match, ranked by BM25.
@@ -111,7 +113,22 @@ Combined text and semantic search.
 
 ## Visualization
 
-### render_task_board
+### render_task_board *(MCP App)*
 - **Params**: `group_by` (status|priority|type, default: status), filters (same as list_tasks)
-- **Returns**: Markdown-formatted kanban board grouped by the specified field.
+- **Returns**: Markdown-formatted kanban board (text fallback). In app-capable clients, renders an interactive HTML board with styled task cards.
+
+### render_dependency_graph *(MCP App)*
+- **Params**: `task_id` (required), `depth` (1-5, default: 2)
+- **Behavior**: Traverses task links up to N hops from the given task.
+- **Returns**: Indented text tree (text fallback). In app-capable clients, renders an interactive force-directed graph with drag/zoom/click-to-highlight.
+
+## Discovery
+
+### get_project_stats *(MCP App)*
+- **Params**: none
+- **Returns**: Task counts grouped by status, type, and priority (text fallback). In app-capable clients, renders a dashboard with summary cards and bar charts.
+
+### list_tags
+- **Params**: none
+- **Returns**: All tags in use with their task counts, sorted by frequency.
 

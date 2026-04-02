@@ -74,6 +74,26 @@ export function resolveProject(directory: string): Project | null {
   return row ?? null;
 }
 
+export function getProjectById(projectId: string): Project | null {
+  const db = getRegistryDb();
+  const row = db
+    .prepare("SELECT id, name, directory, created_at FROM projects WHERE id = ?")
+    .get(projectId) as Project | undefined;
+  return row ?? null;
+}
+
+export function listProjects(nameFilter?: string): Project[] {
+  const db = getRegistryDb();
+  if (nameFilter) {
+    return db
+      .prepare("SELECT id, name, directory, created_at FROM projects WHERE name LIKE ? ORDER BY created_at DESC")
+      .all(`%${nameFilter}%`) as Project[];
+  }
+  return db
+    .prepare("SELECT id, name, directory, created_at FROM projects ORDER BY created_at DESC")
+    .all() as Project[];
+}
+
 export function initProject(name: string, directory: string): Project {
   const existing = resolveProject(directory);
   if (existing) return existing;
@@ -96,14 +116,34 @@ export function initProject(name: string, directory: string): Project {
   return project;
 }
 
-export function getProject(directory: string): Project {
-  const project = resolveProject(directory);
-  if (!project) {
-    throw new Error(
-      `No project found for directory: ${directory}. Call init_project first.`
-    );
+/**
+ * Resolve a project by explicit ID, cwd, or single-project fallback.
+ * Priority: projectId > cwd > only project in registry.
+ */
+export function getProject(directory: string, projectId?: string): Project {
+  // Explicit project ID takes priority
+  if (projectId) {
+    const project = getProjectById(projectId);
+    if (!project) throw new Error(`Project not found: ${projectId}`);
+    return project;
   }
-  return project;
+
+  // Try cwd-based resolution
+  const project = resolveProject(directory);
+  if (project) return project;
+
+  // Fallback: if exactly one project exists, use it
+  const all = listProjects();
+  if (all.length === 1) return all[0];
+
+  if (all.length === 0) {
+    throw new Error("No projects exist. Call init_project first.");
+  }
+
+  const names = all.map((p) => `  - ${p.name} (${p.id})`).join("\n");
+  throw new Error(
+    `Multiple projects exist and none match the current directory. Pass project_id or use list_projects to find the right one:\n${names}`
+  );
 }
 
 // --- History helper ---
@@ -559,27 +599,59 @@ export function listTasks(
 export async function searchTasks(
   db: Database.Database,
   query: string,
-  mode: SearchMode = "hybrid",
-  statusFilter?: Status | Status[],
-  limit: number = 20
+  opts: {
+    mode?: SearchMode;
+    status?: Status | Status[];
+    type?: TaskType | TaskType[];
+    priority?: Priority | Priority[];
+    limit?: number;
+  } = {}
 ): Promise<Array<Task & { score: number }>> {
-  const statusArr = toArray(statusFilter);
-  const statusWhere = statusArr
-    ? ` AND status IN (${statusArr.map(() => "?").join(", ")})`
-    : "";
-  const statusParams = statusArr ?? [];
+  const mode = opts.mode ?? "hybrid";
+  const limit = opts.limit ?? 20;
+  const statusArr = toArray(opts.status);
+  const typeArr = toArray(opts.type);
+  const priorityArr = toArray(opts.priority);
+
+  function matchesFilters(task: Task): boolean {
+    if (statusArr && !statusArr.includes(task.status)) return false;
+    if (typeArr && !typeArr.includes(task.type)) return false;
+    if (priorityArr && !priorityArr.includes(task.priority)) return false;
+    return true;
+  }
+
+  // Build SQL WHERE clauses for filters
+  function sqlFilters(): { where: string; params: unknown[] } {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (statusArr) {
+      clauses.push(`status IN (${statusArr.map(() => "?").join(", ")})`);
+      params.push(...statusArr);
+    }
+    if (typeArr) {
+      clauses.push(`type IN (${typeArr.map(() => "?").join(", ")})`);
+      params.push(...typeArr);
+    }
+    if (priorityArr) {
+      clauses.push(`priority IN (${priorityArr.map(() => "?").join(", ")})`);
+      params.push(...priorityArr);
+    }
+    const where = clauses.length > 0 ? ` AND ${clauses.join(" AND ")}` : "";
+    return { where, params };
+  }
 
   if (mode === "text") {
+    const { where, params } = sqlFilters();
     const rows = db
       .prepare(
         `SELECT t.*, fts.rank as score
          FROM tasks_fts fts
          JOIN tasks t ON t.rowid = fts.rowid
-         WHERE tasks_fts MATCH ?${statusWhere}
+         WHERE tasks_fts MATCH ?${where}
          ORDER BY fts.rank
          LIMIT ?`
       )
-      .all(query, ...statusParams, limit) as (TaskRow & { score: number })[];
+      .all(query, ...params, limit) as (TaskRow & { score: number })[];
 
     return rows.map((r) => ({ ...rowToTask(r), score: r.score }));
   }
@@ -601,7 +673,7 @@ export async function searchTasks(
       if (results.length >= limit) break;
       const task = getTaskById(db, s.taskId);
       if (!task) continue;
-      if (statusArr && !statusArr.includes(task.status)) continue;
+      if (!matchesFilters(task)) continue;
       results.push({ ...task, score: s.score });
     }
     return results;
@@ -651,7 +723,7 @@ export async function searchTasks(
     if (results.length >= limit) break;
     const task = getTaskById(db, id);
     if (!task) continue;
-    if (statusArr && !statusArr.includes(task.status)) continue;
+    if (!matchesFilters(task)) continue;
     results.push({ ...task, score });
   }
   return results;
@@ -700,4 +772,47 @@ export function getTaskGraph(
   }
 
   return { nodes, edges: allEdges };
+}
+
+// --- Stats ---
+
+export function getProjectStats(
+  db: Database.Database
+): {
+  total: number;
+  byStatus: Record<string, number>;
+  byType: Record<string, number>;
+  byPriority: Record<string, number>;
+} {
+  const rows = db
+    .prepare(
+      "SELECT status, type, priority, COUNT(*) as count FROM tasks GROUP BY status, type, priority"
+    )
+    .all() as Array<{ status: string; type: string; priority: string; count: number }>;
+
+  const byStatus: Record<string, number> = {};
+  const byType: Record<string, number> = {};
+  const byPriority: Record<string, number> = {};
+  let total = 0;
+
+  for (const row of rows) {
+    byStatus[row.status] = (byStatus[row.status] ?? 0) + row.count;
+    byType[row.type] = (byType[row.type] ?? 0) + row.count;
+    byPriority[row.priority] = (byPriority[row.priority] ?? 0) + row.count;
+    total += row.count;
+  }
+
+  return { total, byStatus, byType, byPriority };
+}
+
+// --- Tags ---
+
+export function listTags(
+  db: Database.Database
+): Array<{ tag: string; count: number }> {
+  return db
+    .prepare(
+      "SELECT value as tag, COUNT(*) as count FROM tasks, json_each(tasks.tags) GROUP BY value ORDER BY count DESC"
+    )
+    .all() as Array<{ tag: string; count: number }>;
 }

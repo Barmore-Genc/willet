@@ -8,6 +8,7 @@ import {
   CompleteTaskInputSchema,
   CancelTaskInputSchema,
   ReopenTaskInputSchema,
+  withProjectId,
 } from "../models/types.js";
 import {
   getProject,
@@ -23,20 +24,21 @@ import {
   getComments,
   getHistory,
   getLinks,
+  listTasks,
 } from "../db/queries.js";
 
-function resolveDb() {
-  const project = getProject(process.cwd());
+function resolveDb(projectId?: string) {
+  const project = getProject(process.cwd(), projectId);
   return getProjectDb(project.id);
 }
 
 export function registerTaskTools(server: McpServer): void {
   server.tool(
     "create_task",
-    "Create a new task",
-    CreateTaskInputSchema.shape,
-    async (input) => {
-      const db = resolveDb();
+    "Create a new task with optional links and initial_comment",
+    withProjectId(CreateTaskInputSchema).shape,
+    async ({ project_id, ...input }) => {
+      const db = resolveDb(project_id);
       const task = await createTask(db, input);
       return {
         content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
@@ -47,9 +49,9 @@ export function registerTaskTools(server: McpServer): void {
   server.tool(
     "update_task",
     "Update an existing task's fields",
-    UpdateTaskInputSchema.shape,
-    async (input) => {
-      const db = resolveDb();
+    withProjectId(UpdateTaskInputSchema).shape,
+    async ({ project_id, ...input }) => {
+      const db = resolveDb(project_id);
       const task = await updateTask(db, input);
       return {
         content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
@@ -59,10 +61,10 @@ export function registerTaskTools(server: McpServer): void {
 
   server.tool(
     "get_task",
-    "Get a task by ID, optionally including comments, history, and links",
-    GetTaskInputSchema.shape,
-    async ({ task_id, include_comments, include_history, include_links }) => {
-      const db = resolveDb();
+    "Get a task by ID, optionally including comments, history, links, and subtasks",
+    withProjectId(GetTaskInputSchema).shape,
+    async ({ project_id, task_id, include_comments, include_history, include_links, include_subtasks }) => {
+      const db = resolveDb(project_id);
       const task = getTaskById(db, task_id);
       if (!task) throw new Error(`Task not found: ${task_id}`);
 
@@ -70,6 +72,10 @@ export function registerTaskTools(server: McpServer): void {
       if (include_comments) result.comments = getComments(db, task_id);
       if (include_history) result.history = getHistory(db, task_id);
       if (include_links) result.links = getLinks(db, task_id);
+      if (include_subtasks) {
+        const { tasks: subtasks } = listTasks(db, { parent_task_id: task_id });
+        result.subtasks = subtasks;
+      }
 
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -80,9 +86,9 @@ export function registerTaskTools(server: McpServer): void {
   server.tool(
     "delete_task",
     "Delete a task and all its related data",
-    DeleteTaskInputSchema.shape,
-    async ({ task_id }) => {
-      const db = resolveDb();
+    withProjectId(DeleteTaskInputSchema).shape,
+    async ({ project_id, task_id }) => {
+      const db = resolveDb(project_id);
       deleteTask(db, task_id);
       return {
         content: [{ type: "text", text: `Task ${task_id} deleted.` }],
@@ -93,9 +99,9 @@ export function registerTaskTools(server: McpServer): void {
   server.tool(
     "start_task",
     "Set a task's status to in_progress",
-    StartTaskInputSchema.shape,
-    async ({ task_id }) => {
-      const db = resolveDb();
+    withProjectId(StartTaskInputSchema).shape,
+    async ({ project_id, task_id }) => {
+      const db = resolveDb(project_id);
       const task = await startTask(db, task_id);
       return {
         content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
@@ -106,9 +112,9 @@ export function registerTaskTools(server: McpServer): void {
   server.tool(
     "complete_task",
     "Mark a task as done",
-    CompleteTaskInputSchema.shape,
-    async ({ task_id, actual }) => {
-      const db = resolveDb();
+    withProjectId(CompleteTaskInputSchema).shape,
+    async ({ project_id, task_id, actual }) => {
+      const db = resolveDb(project_id);
       const task = await completeTask(db, task_id, actual);
       return {
         content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
@@ -119,9 +125,9 @@ export function registerTaskTools(server: McpServer): void {
   server.tool(
     "cancel_task",
     "Cancel a task",
-    CancelTaskInputSchema.shape,
-    async ({ task_id }) => {
-      const db = resolveDb();
+    withProjectId(CancelTaskInputSchema).shape,
+    async ({ project_id, task_id }) => {
+      const db = resolveDb(project_id);
       const task = await cancelTask(db, task_id);
       return {
         content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
@@ -132,9 +138,9 @@ export function registerTaskTools(server: McpServer): void {
   server.tool(
     "reopen_task",
     "Reopen a completed or cancelled task",
-    ReopenTaskInputSchema.shape,
-    async ({ task_id }) => {
-      const db = resolveDb();
+    withProjectId(ReopenTaskInputSchema).shape,
+    async ({ project_id, task_id }) => {
+      const db = resolveDb(project_id);
       const task = await reopenTask(db, task_id);
       return {
         content: [{ type: "text", text: JSON.stringify(task, null, 2) }],

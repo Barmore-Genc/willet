@@ -97,6 +97,10 @@ export const InitProjectInputSchema = z.object({
   name: z.string().min(1),
 });
 
+export const ListProjectsInputSchema = z.object({
+  name: z.string().optional(),
+});
+
 export const TaskLinkInputSchema = z.object({
   target_task_id: z.string(),
   link_type: LinkTypeSchema,
@@ -133,6 +137,7 @@ export const GetTaskInputSchema = z.object({
   include_comments: z.boolean().optional(),
   include_history: z.boolean().optional(),
   include_links: z.boolean().optional(),
+  include_subtasks: z.boolean().optional(),
 });
 
 export const DeleteTaskInputSchema = z.object({
@@ -193,6 +198,8 @@ export const SearchTasksInputSchema = z.object({
   query: z.string().min(1),
   mode: SearchModeSchema.optional(),
   status: stringOrArray(StatusSchema).optional(),
+  type: stringOrArray(TaskTypeSchema).optional(),
+  priority: stringOrArray(PrioritySchema).optional(),
   limit: z.number().int().positive().optional(),
 });
 
@@ -208,3 +215,21 @@ export const RenderTaskBoardInputSchema = z.object({
   priority: stringOrArray(PrioritySchema).optional(),
   tags: z.array(z.string()).optional(),
 });
+
+export const GetProjectStatsInputSchema = z.object({});
+
+export const ListTagsInputSchema = z.object({});
+
+export const RenderDependencyGraphInputSchema = z.object({
+  task_id: z.string(),
+  depth: z.number().int().min(1).max(5).optional(),
+});
+
+// --- Project-scoped schema helper ---
+
+/** Adds optional project_id to any tool input schema */
+export function withProjectId<T extends z.ZodRawShape>(schema: z.ZodObject<T>) {
+  return schema.extend({
+    project_id: z.string().optional(),
+  });
+}
