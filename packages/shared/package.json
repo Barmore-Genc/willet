@@ -12,6 +12,7 @@
     "build:server": "tsc",
     "build:views": "cross-env INPUT=views/dependency-graph/index.html vite build && cross-env INPUT=views/task-board/index.html vite build && cross-env INPUT=views/project-stats/index.html vite build"
   },
+  "license": "AGPL-3.0-only",
   "engines": {
     "node": ">=20.0.0"
   },

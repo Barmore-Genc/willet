@@ -20,7 +20,7 @@
     "check": "pnpm -r run check",
     "test": "pnpm -r run --if-present test"
   },
-  "license": "ISC",
+  "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.20.0",
   "pnpm": {
     "onlyBuiltDependencies": [
