@@ -42,6 +42,9 @@ jobs:
   docker:
     needs: build-and-test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v6
 
@@ -79,8 +82,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
+          name: npm-package
           path: artifacts
-          merge-multiple: true
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
