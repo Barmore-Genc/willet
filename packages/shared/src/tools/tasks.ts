@@ -61,17 +61,17 @@ export function registerTaskTools(server: McpServer): void {
 
   server.tool(
     "get_task",
-    "Get a task by ID, optionally including comments, history, links, and subtasks",
+    "Get a task by ID with its comments and links. History and subtasks are opt-in.",
     withProjectId(GetTaskInputSchema).shape,
-    async ({ project_id, task_id, include_comments, include_history, include_links, include_subtasks }) => {
+    async ({ project_id, task_id, include_history, include_subtasks }) => {
       const db = resolveDb(project_id);
       const task = getTaskById(db, task_id);
       if (!task) throw new Error(`Task not found: ${task_id}`);
 
       const result: Record<string, unknown> = { ...task };
-      if (include_comments) result.comments = getComments(db, task_id);
+      result.comments = getComments(db, task_id);
       if (include_history) result.history = getHistory(db, task_id);
-      if (include_links) result.links = getLinks(db, task_id);
+      result.links = getLinks(db, task_id);
       if (include_subtasks) {
         const { tasks: subtasks } = listTasks(db, { parent_task_id: task_id });
         result.subtasks = subtasks;

@@ -134,9 +134,7 @@ export const UpdateTaskInputSchema = z.object({
 
 export const GetTaskInputSchema = z.object({
   task_id: z.string(),
-  include_comments: z.boolean().optional(),
   include_history: z.boolean().optional(),
-  include_links: z.boolean().optional(),
   include_subtasks: z.boolean().optional(),
 });
 
