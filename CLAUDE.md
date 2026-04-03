@@ -75,3 +75,4 @@ packages/
 - IDs are ULIDs (sortable, unique, no coordination needed — good for future multi-user)
 - `changed_by` is set via AsyncLocalStorage context (`getCurrentUser()`); "local" for stdio, username for HTTP
 - Keep the MCP tool count manageable — prefer tools with filter parameters over many narrow tools
+- Never delete and recreate git tags — always create a new incremented tag instead
