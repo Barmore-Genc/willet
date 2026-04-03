@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "clean": "rm -rf dist",
     "build": "npm run build:views && tsc",
     "check": "tsc",
     "build:server": "tsc",

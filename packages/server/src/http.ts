@@ -10,10 +10,17 @@ import { WilletAuthProvider } from "./auth/provider.js";
 import { runAsUser } from "@willet/shared";
 import type { WilletConfig } from "./config.js";
 
+export interface HttpServerHandle {
+  server: ReturnType<import("express").Express["listen"]>;
+  provider: WilletAuthProvider;
+  close: () => Promise<void>;
+}
+
 export async function startHttpServer(
   config: WilletConfig,
-  createServer: () => Promise<McpServer>
-): Promise<void> {
+  createServer: () => Promise<McpServer>,
+  options?: { skipProcessHandlers?: boolean }
+): Promise<HttpServerHandle> {
   const provider = new WilletAuthProvider(config);
   const baseUrl = new URL(config.server.base_url);
   const mcpUrl = new URL("/mcp", baseUrl);
@@ -174,7 +181,7 @@ export async function startHttpServer(
   });
 
   const port = config.server.port;
-  app.listen(port, () => {
+  const httpServer = app.listen(port, () => {
     console.log(`Willet HTTP server listening on port ${port}`);
     console.log(`MCP endpoint: ${mcpUrl}`);
     console.log(
@@ -182,9 +189,7 @@ export async function startHttpServer(
     );
   });
 
-  // Graceful shutdown
-  process.on("SIGINT", async () => {
-    console.log("Shutting down...");
+  const closeServer = async () => {
     for (const [sid, transport] of transports) {
       try {
         await transport.close();
@@ -193,28 +198,32 @@ export async function startHttpServer(
       }
     }
     transports.clear();
-    process.exit(0);
-  });
+    httpServer.close();
+  };
 
-  process.on("SIGTERM", async () => {
-    console.log("Shutting down...");
-    for (const [sid, transport] of transports) {
-      try {
-        await transport.close();
-      } catch (error) {
-        console.error(`Error closing session ${sid}:`, error);
-      }
-    }
-    transports.clear();
-    process.exit(0);
-  });
+  if (!options?.skipProcessHandlers) {
+    // Graceful shutdown
+    process.on("SIGINT", async () => {
+      console.log("Shutting down...");
+      await closeServer();
+      process.exit(0);
+    });
 
-  // Hot-reload config
-  const { watchConfig } = await import("./config.js");
-  watchConfig(process.env.WILLET_CONFIG!, (newConfig) => {
-    provider.config = newConfig;
-    console.log(
-      `Config reloaded. Users: ${Object.keys(newConfig.users).join(", ")}`
-    );
-  });
+    process.on("SIGTERM", async () => {
+      console.log("Shutting down...");
+      await closeServer();
+      process.exit(0);
+    });
+
+    // Hot-reload config
+    const { watchConfig } = await import("./config.js");
+    watchConfig(process.env.WILLET_CONFIG!, (newConfig) => {
+      provider.config = newConfig;
+      console.log(
+        `Config reloaded. Users: ${Object.keys(newConfig.users).join(", ")}`
+      );
+    });
+  }
+
+  return { server: httpServer, provider, close: closeServer };
 }

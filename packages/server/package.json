@@ -5,17 +5,19 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
+    "clean": "rm -rf dist",
     "check": "tsc --noEmit",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "test": "vitest run"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@willet/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@willet/shared": "workspace:*",
     "express": "^5.2.1",
     "smol-toml": "^1.6.1"
   },
@@ -23,6 +25,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2"
   }
 }

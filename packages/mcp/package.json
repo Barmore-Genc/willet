@@ -20,6 +20,7 @@
     "url": "https://github.com/SeriousBug/willet/issues"
   },
   "scripts": {
+    "clean": "rm -rf dist",
     "check": "tsc --noEmit",
     "build": "node build.js",
     "start": "node dist/index.js",
