@@ -2,9 +2,12 @@ import { pipeline, type FeatureExtractionPipeline } from "@huggingface/transform
 
 let extractor: FeatureExtractionPipeline | null = null;
 
-export async function initEmbeddings(): Promise<void> {
-  console.error("Loading sentence-transformers/all-MiniLM-L6-v2...");
-  extractor = await pipeline("feature-extraction", "sentence-transformers/all-MiniLM-L6-v2", {
+const DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2";
+
+export async function initEmbeddings(model?: string): Promise<void> {
+  const modelName = model ?? DEFAULT_MODEL;
+  console.error(`Loading ${modelName}...`);
+  extractor = await pipeline("feature-extraction", modelName, {
     dtype: "fp32",
   });
   console.error("Model ready.");

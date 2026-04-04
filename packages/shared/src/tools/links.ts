@@ -25,7 +25,7 @@ export function registerLinkTools(server: McpServer): void {
     withProjectId(AddCommentInputSchema).shape,
     async ({ project_id, task_id, content }) => {
       const db = resolveDb(project_id);
-      const comment = addComment(db, task_id, content);
+      const comment = await addComment(db, task_id, content);
       return {
         content: [{ type: "text", text: JSON.stringify(comment, null, 2) }],
       };

@@ -11,8 +11,8 @@ export { initEmbeddings } from "./embeddings/local.js";
 export { closeAll } from "./db/queries.js";
 export { getCurrentUser, runAsUser } from "./context.js";
 
-export async function createServer(): Promise<McpServer> {
-  await initEmbeddings();
+export async function createServer(options?: { embeddingModel?: string }): Promise<McpServer> {
+  await initEmbeddings(options?.embeddingModel);
 
   const server = new McpServer({
     name: "willet",

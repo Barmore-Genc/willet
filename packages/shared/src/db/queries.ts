@@ -195,7 +195,9 @@ function rowToTask(row: TaskRow): Task {
 // --- Embedding helper ---
 
 async function embedTask(db: Database.Database, task: Task): Promise<void> {
-  const content = `${task.title}\n${task.description}\n${task.tags.join(", ")}`;
+  const comments = getComments(db, task.id);
+  const commentText = comments.map((c) => c.content).join("\n");
+  const content = `${task.title}\n${task.description}\n${task.tags.join(", ")}${commentText ? `\n${commentText}` : ""}`;
   const contentHash = createHash("sha256").update(content).digest("hex");
 
   const existing = db
@@ -258,7 +260,6 @@ export async function createTask(
   }
 
   const task = getTaskById(db, id)!;
-  await embedTask(db, task);
 
   const result: Task & { links?: TaskLink[]; comment?: TaskComment } = { ...task };
 
@@ -267,7 +268,9 @@ export async function createTask(
   }
 
   if (input.initial_comment) {
-    result.comment = addComment(db, id, input.initial_comment);
+    result.comment = await addComment(db, id, input.initial_comment);
+  } else {
+    await embedTask(db, task);
   }
 
   return result;
@@ -401,11 +404,11 @@ export async function reopenTask(db: Database.Database, taskId: string): Promise
 
 // --- Comments ---
 
-export function addComment(
+export async function addComment(
   db: Database.Database,
   taskId: string,
   content: string
-): TaskComment {
+): Promise<TaskComment> {
   const task = getTaskById(db, taskId);
   if (!task) throw new Error(`Task not found: ${taskId}`);
 
@@ -420,6 +423,8 @@ export function addComment(
   db.prepare(
     "INSERT INTO task_comments (id, task_id, content, created_at, created_by) VALUES (?, ?, ?, ?, ?)"
   ).run(comment.id, comment.task_id, comment.content, comment.created_at, comment.created_by);
+
+  await embedTask(db, task);
 
   return comment;
 }
