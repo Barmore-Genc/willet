@@ -4,7 +4,19 @@ let extractor: FeatureExtractionPipeline | null = null;
 
 const DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2";
 
+export const EMBEDDING_DIM = 384;
+
+async function localEmbed(text: string): Promise<Float32Array> {
+  if (!extractor) throw new Error("Embeddings not initialized. Call initEmbeddings() first.");
+  const result = await extractor(text, { pooling: "mean", normalize: true });
+  return new Float32Array(result.data as Float32Array);
+}
+
+let embedFn: (text: string) => Promise<Float32Array> = localEmbed;
+let customEmbedder = false;
+
 export async function initEmbeddings(model?: string): Promise<void> {
+  if (customEmbedder) return; // skip model loading when a custom embedder is set
   const modelName = model ?? DEFAULT_MODEL;
   console.error(`Loading ${modelName}...`);
   extractor = await pipeline("feature-extraction", modelName, {
@@ -14,10 +26,13 @@ export async function initEmbeddings(model?: string): Promise<void> {
 }
 
 export async function embed(text: string): Promise<Float32Array> {
-  if (!extractor) throw new Error("Embeddings not initialized. Call initEmbeddings() first.");
+  return embedFn(text);
+}
 
-  const result = await extractor(text, { pooling: "mean", normalize: true });
-  return new Float32Array(result.data as Float32Array);
+/** Override the embedding function (e.g. for testing or remote embedders). */
+export function setEmbedder(fn: (text: string) => Promise<Float32Array>): void {
+  embedFn = fn;
+  customEmbedder = true;
 }
 
 export function cosineSimilarity(a: Float32Array, b: Float32Array): number {

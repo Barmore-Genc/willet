@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { startHttpServer, type HttpServerHandle } from "./http.js";
-import { createServer, closeAll } from "@willet/shared";
+import { createServer, closeAll, setEmbedder, EMBEDDING_DIM } from "@willet/shared";
 import type { WilletConfig } from "./config.js";
 
 // --- Test config ---
@@ -232,6 +232,17 @@ describe("Willet HTTP Server E2E", () => {
   let dataDir: string;
 
   beforeAll(async () => {
+    // Use a deterministic dummy embedder to skip loading the 400MB ONNX model.
+    // This test suite doesn't exercise search, so real embeddings aren't needed.
+    setEmbedder(async (text: string) => {
+      const hash = createHash("sha256").update(text).digest();
+      const embedding = new Float32Array(EMBEDDING_DIM);
+      for (let i = 0; i < EMBEDDING_DIM; i++) {
+        embedding[i] = (hash[i % hash.length] - 128) / 128;
+      }
+      return embedding;
+    });
+
     // Isolated data directory
     dataDir = mkdtempSync(join(tmpdir(), "willet-test-"));
     process.env.WILLET_DATA_DIR = dataDir;

@@ -1,6 +1,9 @@
 import Database from "better-sqlite3";
+import * as sqliteVec from "sqlite-vec";
+import { EMBEDDING_DIM } from "../embeddings/local.js";
 
 export function applySchema(db: Database.Database): void {
+  sqliteVec.load(db);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
 
@@ -98,6 +101,44 @@ export function applySchema(db: Database.Database): void {
         VALUES (new.rowid, new.title, new.description);
       END;
     `);
+  }
+
+  // --- Vector search (sqlite-vec) ---
+
+  const vecExists = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='task_vec'"
+    )
+    .get();
+
+  if (!vecExists) {
+    db.exec(
+      `CREATE VIRTUAL TABLE task_vec USING vec0(embedding float[${EMBEDDING_DIM}] distance_metric=cosine)`
+    );
+
+    db.exec(`
+      CREATE TRIGGER task_vec_cleanup BEFORE DELETE ON tasks BEGIN
+        DELETE FROM task_vec WHERE rowid = old.rowid;
+      END;
+    `);
+
+    // Backfill from existing embeddings
+    const rows = db
+      .prepare(
+        "SELECT t.rowid, te.embedding FROM task_embeddings te JOIN tasks t ON t.id = te.task_id"
+      )
+      .all() as Array<{ rowid: number; embedding: Buffer }>;
+
+    if (rows.length > 0) {
+      const insert = db.prepare(
+        "INSERT INTO task_vec(rowid, embedding) VALUES (?, ?)"
+      );
+      db.transaction(() => {
+        for (const row of rows) {
+          insert.run(BigInt(row.rowid), row.embedding);
+        }
+      })();
+    }
   }
 }
 

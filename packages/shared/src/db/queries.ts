@@ -7,9 +7,7 @@ import { ulid } from "ulid";
 import { getCurrentUser } from "../context.js";
 import {
   embed,
-  cosineSimilarity,
   embeddingToBuffer,
-  bufferToEmbedding,
 } from "../embeddings/local.js";
 import { applySchema, applyRegistrySchema } from "./schema.js";
 import type {
@@ -207,9 +205,21 @@ async function embedTask(db: Database.Database, task: Task): Promise<void> {
   if (existing && existing.content_hash === contentHash) return;
 
   const embedding = await embed(content);
-  db.prepare(
-    "INSERT OR REPLACE INTO task_embeddings (task_id, embedding, content_hash) VALUES (?, ?, ?)"
-  ).run(task.id, embeddingToBuffer(embedding), contentHash);
+  const buf = embeddingToBuffer(embedding);
+  const rowid = BigInt(
+    (db.prepare("SELECT rowid FROM tasks WHERE id = ?").get(task.id) as { rowid: number }).rowid
+  );
+
+  db.transaction(() => {
+    db.prepare(
+      "INSERT OR REPLACE INTO task_embeddings (task_id, embedding, content_hash) VALUES (?, ?, ?)"
+    ).run(task.id, buf, contentHash);
+    db.prepare("DELETE FROM task_vec WHERE rowid = ?").run(rowid);
+    db.prepare("INSERT INTO task_vec(rowid, embedding) VALUES (?, ?)").run(
+      rowid,
+      buf
+    );
+  })();
 }
 
 // --- Task CRUD ---
@@ -662,25 +672,31 @@ export async function searchTasks(
     return rows.map((r) => ({ ...rowToTask(r), score: r.score }));
   }
 
-  if (mode === "semantic") {
+  // --- KNN helper (uses sqlite-vec indexed search) ---
+
+  async function knnSearch(
+    kLimit: number
+  ): Promise<Array<{ id: string; distance: number }>> {
     const queryEmbedding = await embed(query);
-    const allEmbeddings = db
-      .prepare("SELECT task_id, embedding FROM task_embeddings")
-      .all() as Array<{ task_id: string; embedding: Buffer }>;
+    const queryBuf = embeddingToBuffer(queryEmbedding);
+    return db
+      .prepare(
+        `SELECT t.id, knn.distance
+         FROM (SELECT rowid, distance FROM task_vec WHERE embedding MATCH ? AND k = ?) knn
+         JOIN tasks t ON t.rowid = knn.rowid`
+      )
+      .all(queryBuf, kLimit) as Array<{ id: string; distance: number }>;
+  }
 
-    const scored = allEmbeddings.map((row) => ({
-      taskId: row.task_id,
-      score: cosineSimilarity(queryEmbedding, bufferToEmbedding(row.embedding)),
-    }));
-    scored.sort((a, b) => b.score - a.score);
-
+  if (mode === "semantic") {
+    const knnRows = await knnSearch(limit * 5);
     const results: Array<Task & { score: number }> = [];
-    for (const s of scored) {
+    for (const row of knnRows) {
       if (results.length >= limit) break;
-      const task = getTaskById(db, s.taskId);
+      const task = getTaskById(db, row.id);
       if (!task) continue;
       if (!matchesFilters(task)) continue;
-      results.push({ ...task, score: s.score });
+      results.push({ ...task, score: 1 - row.distance });
     }
     return results;
   }
@@ -700,26 +716,16 @@ export async function searchTasks(
     )
     .all(query.split(/\s+/).join(" OR "), limit * 2) as Array<{ id: string }>;
 
-  // Semantic results
-  const queryEmbedding = await embed(query);
-  const allEmbeddings = db
-    .prepare("SELECT task_id, embedding FROM task_embeddings")
-    .all() as Array<{ task_id: string; embedding: Buffer }>;
-
-  const vectorScored = allEmbeddings
-    .map((row) => ({
-      taskId: row.task_id,
-      score: cosineSimilarity(queryEmbedding, bufferToEmbedding(row.embedding)),
-    }))
-    .sort((a, b) => b.score - a.score);
+  // Semantic results (via sqlite-vec KNN)
+  const knnRows = await knnSearch(limit * 5);
 
   // RRF fusion
   const rrfScores = new Map<string, number>();
   ftsRows.forEach((r, i) => {
     rrfScores.set(r.id, (rrfScores.get(r.id) ?? 0) + 1 / (k + i + 1));
   });
-  vectorScored.forEach((r, i) => {
-    rrfScores.set(r.taskId, (rrfScores.get(r.taskId) ?? 0) + 1 / (k + i + 1));
+  knnRows.forEach((r, i) => {
+    rrfScores.set(r.id, (rrfScores.get(r.id) ?? 0) + 1 / (k + i + 1));
   });
 
   const sorted = [...rrfScores.entries()].sort((a, b) => b[1] - a[1]);
