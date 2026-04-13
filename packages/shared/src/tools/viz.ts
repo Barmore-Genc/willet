@@ -11,9 +11,11 @@ import {
   RenderTaskBoardInputSchema,
   RenderDependencyGraphInputSchema,
   withProjectId,
+  formatTasks,
   type GroupBy,
   type Task,
   type TaskLink,
+  type ToolOptions,
 } from "../models/types.js";
 import {
   getProject,
@@ -69,7 +71,7 @@ function getGroupOrder(groupBy: GroupBy): string[] {
   }
 }
 
-function renderBoard(tasks: Task[], groupBy: GroupBy): string {
+function renderBoard(tasks: Task[], groupBy: GroupBy, showAssignee: boolean): string {
   const groups = new Map<string, Task[]>();
   for (const task of tasks) {
     const key = task[groupBy];
@@ -87,13 +89,24 @@ function renderBoard(tasks: Task[], groupBy: GroupBy): string {
 
     lines.push(`## ${group} (${groupTasks.length})`);
     lines.push("");
-    lines.push("| ID | Title | Priority | Type | Estimate |");
-    lines.push("|---|---|---|---|---|");
+    if (showAssignee) {
+      lines.push("| ID | Title | Priority | Type | Assignee | Estimate |");
+      lines.push("|---|---|---|---|---|---|");
+    } else {
+      lines.push("| ID | Title | Priority | Type | Estimate |");
+      lines.push("|---|---|---|---|---|");
+    }
     for (const t of groupTasks) {
       const shortId = t.id.slice(-8);
-      lines.push(
-        `| ${shortId} | ${t.title} | ${t.priority} | ${t.type} | ${t.estimate ?? "-"} |`
-      );
+      if (showAssignee) {
+        lines.push(
+          `| ${shortId} | ${t.title} | ${t.priority} | ${t.type} | ${t.assignee ?? "-"} | ${t.estimate ?? "-"} |`
+        );
+      } else {
+        lines.push(
+          `| ${shortId} | ${t.title} | ${t.priority} | ${t.type} | ${t.estimate ?? "-"} |`
+        );
+      }
     }
     lines.push("");
   }
@@ -159,7 +172,7 @@ function renderDependencyGraphText(
   return lines.join("\n");
 }
 
-export function registerVizTools(server: McpServer): void {
+export function registerVizTools(server: McpServer, options: ToolOptions): void {
   // --- Task Board (App-enhanced) ---
 
   const boardUri = "ui://willet/task-board.html";
@@ -190,10 +203,11 @@ export function registerVizTools(server: McpServer): void {
       const db = resolveDb(project_id);
       const { tasks } = listTasks(db, { ...filters, limit: 200 });
       const groupBy = group_by ?? "status";
-      const board = renderBoard(tasks, groupBy);
+      const showAssignee = options.mode === "selfhosted";
+      const board = renderBoard(tasks, groupBy, showAssignee);
       return {
         content: [{ type: "text", text: board }],
-        structuredContent: { tasks, groupBy },
+        structuredContent: { tasks: formatTasks(tasks, options), groupBy },
       };
     }
   );
@@ -230,7 +244,7 @@ export function registerVizTools(server: McpServer): void {
       const text = renderDependencyGraphText(graph.nodes, graph.edges, task_id);
       return {
         content: [{ type: "text", text }],
-        structuredContent: { nodes: graph.nodes, edges: graph.edges },
+        structuredContent: { nodes: formatTasks(graph.nodes, options), edges: graph.edges },
       };
     }
   );

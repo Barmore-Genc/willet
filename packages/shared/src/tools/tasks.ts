@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   CreateTaskInputSchema,
@@ -9,6 +10,10 @@ import {
   CancelTaskInputSchema,
   ReopenTaskInputSchema,
   withProjectId,
+  formatTask,
+  formatTasks,
+  validateAssignee,
+  type ToolOptions,
 } from "../models/types.js";
 import {
   getProject,
@@ -32,16 +37,30 @@ function resolveDb(projectId?: string) {
   return getProjectDb(project.id);
 }
 
-export function registerTaskTools(server: McpServer): void {
+export function registerTaskTools(server: McpServer, options: ToolOptions): void {
+  // Build mode-aware schemas for create and update
+  const createSchema =
+    options.mode === "local"
+      ? withProjectId(CreateTaskInputSchema.omit({ assignee: true }))
+      : withProjectId(CreateTaskInputSchema.extend({ assignee: z.string().min(1) }));
+
+  const updateSchema =
+    options.mode === "local"
+      ? withProjectId(UpdateTaskInputSchema.omit({ assignee: true }))
+      : withProjectId(UpdateTaskInputSchema);
+
   server.tool(
     "create_task",
     "Create a new task with optional links and initial_comment",
-    withProjectId(CreateTaskInputSchema).shape,
+    createSchema.shape,
     async ({ project_id, ...input }) => {
+      if (options.mode === "selfhosted") {
+        validateAssignee((input as { assignee?: string }).assignee, options);
+      }
       const db = resolveDb(project_id);
       const task = await createTask(db, input);
       return {
-        content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(formatTask(task, options), null, 2) }],
       };
     }
   );
@@ -49,12 +68,15 @@ export function registerTaskTools(server: McpServer): void {
   server.tool(
     "update_task",
     "Update an existing task's fields",
-    withProjectId(UpdateTaskInputSchema).shape,
+    updateSchema.shape,
     async ({ project_id, ...input }) => {
+      if (options.mode === "selfhosted") {
+        validateAssignee((input as { assignee?: string | null }).assignee, options);
+      }
       const db = resolveDb(project_id);
       const task = await updateTask(db, input);
       return {
-        content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(formatTask(task, options), null, 2) }],
       };
     }
   );
@@ -68,13 +90,13 @@ export function registerTaskTools(server: McpServer): void {
       const task = getTaskById(db, task_id);
       if (!task) throw new Error(`Task not found: ${task_id}`);
 
-      const result: Record<string, unknown> = { ...task };
+      const result: Record<string, unknown> = { ...formatTask(task, options) };
       result.comments = getComments(db, task_id);
       if (include_history) result.history = getHistory(db, task_id);
       result.links = getLinks(db, task_id);
       if (include_subtasks) {
         const { tasks: subtasks } = listTasks(db, { parent_task_id: task_id });
-        result.subtasks = subtasks;
+        result.subtasks = formatTasks(subtasks, options);
       }
 
       return {
@@ -104,7 +126,7 @@ export function registerTaskTools(server: McpServer): void {
       const db = resolveDb(project_id);
       const task = await startTask(db, task_id);
       return {
-        content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(formatTask(task, options), null, 2) }],
       };
     }
   );
@@ -117,7 +139,7 @@ export function registerTaskTools(server: McpServer): void {
       const db = resolveDb(project_id);
       const task = await completeTask(db, task_id, actual);
       return {
-        content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(formatTask(task, options), null, 2) }],
       };
     }
   );
@@ -130,7 +152,7 @@ export function registerTaskTools(server: McpServer): void {
       const db = resolveDb(project_id);
       const task = await cancelTask(db, task_id);
       return {
-        content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(formatTask(task, options), null, 2) }],
       };
     }
   );
@@ -143,7 +165,7 @@ export function registerTaskTools(server: McpServer): void {
       const db = resolveDb(project_id);
       const task = await reopenTask(db, task_id);
       return {
-        content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(formatTask(task, options), null, 2) }],
       };
     }
   );

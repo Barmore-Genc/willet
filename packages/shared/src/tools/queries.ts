@@ -14,6 +14,8 @@ import {
   GetProjectStatsInputSchema,
   ListTagsInputSchema,
   withProjectId,
+  formatTasks,
+  type ToolOptions,
 } from "../models/types.js";
 import {
   getProject,
@@ -52,16 +54,21 @@ async function loadView(name: string): Promise<string> {
   return fs.readFile(path.join(viewsDir, name, "index.html"), "utf-8");
 }
 
-export function registerQueryTools(server: McpServer): void {
+export function registerQueryTools(server: McpServer, options: ToolOptions): void {
+  const listSchema =
+    options.mode === "local"
+      ? withProjectId(ListTasksInputSchema.omit({ assignee: true }))
+      : withProjectId(ListTasksInputSchema);
+
   server.tool(
     "list_tasks",
     "List tasks with structured filtering (status, type, priority, tags, dates, parent). All filters use AND semantics.",
-    withProjectId(ListTasksInputSchema).shape,
+    listSchema.shape,
     async ({ project_id, ...input }) => {
       const db = resolveDb(project_id);
       const result = listTasks(db, input);
       return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify({ ...result, tasks: formatTasks(result.tasks, options) }, null, 2) }],
       };
     }
   );
@@ -74,7 +81,7 @@ export function registerQueryTools(server: McpServer): void {
       const db = resolveDb(project_id);
       const results = await searchTasks(db, query, { mode, status, type, priority, limit });
       return {
-        content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(formatTasks(results, options), null, 2) }],
       };
     }
   );
@@ -87,7 +94,7 @@ export function registerQueryTools(server: McpServer): void {
       const db = resolveDb(project_id);
       const graph = getTaskGraph(db, task_id, depth);
       return {
-        content: [{ type: "text", text: JSON.stringify(graph, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify({ ...graph, nodes: formatTasks(graph.nodes, options) }, null, 2) }],
       };
     }
   );

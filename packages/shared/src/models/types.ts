@@ -59,6 +59,7 @@ export interface Task {
   actual: string | null;
   tags: string[];
   parent_task_id: string | null;
+  assignee: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -115,6 +116,7 @@ export const CreateTaskInputSchema = z.object({
   estimate: z.string().optional(),
   tags: z.array(z.string()).optional(),
   parent_task_id: z.string().optional(),
+  assignee: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   links: z.array(TaskLinkInputSchema).optional(),
   initial_comment: z.string().optional(),
@@ -129,6 +131,7 @@ export const UpdateTaskInputSchema = z.object({
   estimate: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
   parent_task_id: z.string().nullable().optional(),
+  assignee: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -182,6 +185,7 @@ export const ListTasksInputSchema = z.object({
   priority: stringOrArray(PrioritySchema).optional(),
   tags: z.array(z.string()).optional(),
   parent_task_id: z.string().nullable().optional(),
+  assignee: z.string().nullable().optional(),
   created_after: z.string().optional(),
   created_before: z.string().optional(),
   completed_after: z.string().optional(),
@@ -222,6 +226,41 @@ export const RenderDependencyGraphInputSchema = z.object({
   task_id: z.string(),
   depth: z.number().int().min(1).max(5).optional(),
 });
+
+// --- Mode-aware tool options ---
+
+export interface ToolOptions {
+  mode: "local" | "selfhosted";
+  validAssignees?: string[];
+}
+
+/** Strip assignee from a task object (local mode only) */
+export function formatTask(task: Task, options: ToolOptions): Omit<Task, "assignee"> | Task {
+  if (options.mode === "local") {
+    const { assignee, ...rest } = task;
+    return rest;
+  }
+  return task;
+}
+
+/** Strip assignee from an array of tasks (local mode only) */
+export function formatTasks(tasks: Task[], options: ToolOptions): Array<Omit<Task, "assignee"> | Task> {
+  if (options.mode === "local") {
+    return tasks.map(({ assignee, ...rest }) => rest);
+  }
+  return tasks;
+}
+
+/** Validate assignee against the config user list (self-hosted only). Throws on invalid. */
+export function validateAssignee(assignee: string | null | undefined, options: ToolOptions): void {
+  if (options.mode === "selfhosted" && options.validAssignees && assignee != null) {
+    if (!options.validAssignees.includes(assignee)) {
+      throw new Error(
+        `Invalid assignee "${assignee}". Valid users: ${options.validAssignees.join(", ")}`
+      );
+    }
+  }
+}
 
 // --- Project-scoped schema helper ---
 

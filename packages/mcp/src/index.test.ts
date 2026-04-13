@@ -445,6 +445,209 @@ describe("Willet MCP stdio E2E", () => {
     expect(listText).toContain("Project");
   });
 
+  it("should not expose assignee in local mode schemas", async () => {
+    const { tools } = await client.listTools();
+    const createTool = tools.find((t) => t.name === "create_task")!;
+    const updateTool = tools.find((t) => t.name === "update_task")!;
+    const listTool = tools.find((t) => t.name === "list_tasks")!;
+
+    expect(createTool.inputSchema.properties).not.toHaveProperty("assignee");
+    expect(updateTool.inputSchema.properties).not.toHaveProperty("assignee");
+    expect(listTool.inputSchema.properties).not.toHaveProperty("assignee");
+  });
+
+  it("should not include assignee in task CRUD outputs in local mode", async () => {
+    const projectDir = join(dataDir, "local-crud-project");
+    const initResult = await client.callTool({
+      name: "init_project",
+      arguments: { name: "Local CRUD Project", directory: projectDir },
+    });
+    const projectId = (initResult.content as Array<{ text: string }>)[0]
+      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+    // create_task
+    const createResult = await client.callTool({
+      name: "create_task",
+      arguments: { project_id: projectId, title: "Local task" },
+    });
+    const createText = (createResult.content as Array<{ text: string }>)[0].text;
+    const taskId = createText.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+    expect(createText).not.toContain("assignee");
+
+    // update_task
+    const updateResult = await client.callTool({
+      name: "update_task",
+      arguments: { project_id: projectId, task_id: taskId, priority: "high" },
+    });
+    expect((updateResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
+
+    // get_task
+    const getResult = await client.callTool({
+      name: "get_task",
+      arguments: { project_id: projectId, task_id: taskId },
+    });
+    expect((getResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
+
+    // list_tasks
+    const listResult = await client.callTool({
+      name: "list_tasks",
+      arguments: { project_id: projectId },
+    });
+    expect((listResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
+  });
+
+  it("should not include assignee in lifecycle tool outputs in local mode", async () => {
+    const projectDir = join(dataDir, "local-lifecycle-project");
+    const initResult = await client.callTool({
+      name: "init_project",
+      arguments: { name: "Local Lifecycle Project", directory: projectDir },
+    });
+    const projectId = (initResult.content as Array<{ text: string }>)[0]
+      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+    const createResult = await client.callTool({
+      name: "create_task",
+      arguments: { project_id: projectId, title: "Lifecycle task" },
+    });
+    const taskId = (createResult.content as Array<{ text: string }>)[0]
+      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+    // start_task
+    const startResult = await client.callTool({
+      name: "start_task",
+      arguments: { project_id: projectId, task_id: taskId },
+    });
+    expect((startResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
+
+    // complete_task
+    const completeResult = await client.callTool({
+      name: "complete_task",
+      arguments: { project_id: projectId, task_id: taskId },
+    });
+    expect((completeResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
+
+    // reopen_task
+    const reopenResult = await client.callTool({
+      name: "reopen_task",
+      arguments: { project_id: projectId, task_id: taskId },
+    });
+    expect((reopenResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
+
+    // cancel_task
+    const cancelResult = await client.callTool({
+      name: "cancel_task",
+      arguments: { project_id: projectId, task_id: taskId },
+    });
+    expect((cancelResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
+  });
+
+  it("should not include assignee in search results in local mode", async () => {
+    const projectDir = join(dataDir, "local-search-project");
+    const initResult = await client.callTool({
+      name: "init_project",
+      arguments: { name: "Local Search Project", directory: projectDir },
+    });
+    const projectId = (initResult.content as Array<{ text: string }>)[0]
+      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+    await client.callTool({
+      name: "create_task",
+      arguments: {
+        project_id: projectId,
+        title: "Searchable widget task",
+        description: "This is a searchable task about widgets",
+      },
+    });
+
+    const searchResult = await client.callTool({
+      name: "search_tasks",
+      arguments: { project_id: projectId, query: "widget" },
+    });
+    const searchText = (searchResult.content as Array<{ text: string }>)[0].text;
+    expect(searchText).toContain("widget");
+    expect(searchText).not.toContain("assignee");
+  });
+
+  it("should not include assignee in subtasks or task graph in local mode", async () => {
+    const projectDir = join(dataDir, "local-graph-project");
+    const initResult = await client.callTool({
+      name: "init_project",
+      arguments: { name: "Local Graph Project", directory: projectDir },
+    });
+    const projectId = (initResult.content as Array<{ text: string }>)[0]
+      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+    // Create parent
+    const parentResult = await client.callTool({
+      name: "create_task",
+      arguments: { project_id: projectId, title: "Parent task" },
+    });
+    const parentId = (parentResult.content as Array<{ text: string }>)[0]
+      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+    // Create child
+    const childResult = await client.callTool({
+      name: "create_task",
+      arguments: { project_id: projectId, title: "Child task", parent_task_id: parentId },
+    });
+    const childId = (childResult.content as Array<{ text: string }>)[0]
+      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+    // Link them
+    await client.callTool({
+      name: "link_tasks",
+      arguments: {
+        project_id: projectId,
+        source_task_id: parentId,
+        target_task_id: childId,
+        link_type: "blocks",
+      },
+    });
+
+    // get_task with subtasks
+    const getResult = await client.callTool({
+      name: "get_task",
+      arguments: { project_id: projectId, task_id: parentId, include_subtasks: true },
+    });
+    const getText = (getResult.content as Array<{ text: string }>)[0].text;
+    expect(getText).toContain("Child task");
+    expect(getText).not.toContain("assignee");
+
+    // get_task_graph
+    const graphResult = await client.callTool({
+      name: "get_task_graph",
+      arguments: { project_id: projectId, task_id: parentId },
+    });
+    const graphText = (graphResult.content as Array<{ text: string }>)[0].text;
+    expect(graphText).toContain("Parent task");
+    expect(graphText).toContain("Child task");
+    expect(graphText).not.toContain("assignee");
+  });
+
+  it("should not include assignee column in task board in local mode", async () => {
+    const projectDir = join(dataDir, "local-board-project");
+    const initResult = await client.callTool({
+      name: "init_project",
+      arguments: { name: "Local Board Project", directory: projectDir },
+    });
+    const projectId = (initResult.content as Array<{ text: string }>)[0]
+      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+    await client.callTool({
+      name: "create_task",
+      arguments: { project_id: projectId, title: "Board task", priority: "high" },
+    });
+
+    const boardResult = await client.callTool({
+      name: "render_task_board",
+      arguments: { project_id: projectId },
+    });
+    const boardText = (boardResult.content as Array<{ text: string }>)[0].text;
+    expect(boardText).toContain("Board task");
+    expect(boardText).not.toContain("Assignee");
+    expect(boardText).not.toContain("assignee");
+  });
+
   it("should return error for invalid project ID", async () => {
     const result = await client.callTool({
       name: "list_tasks",

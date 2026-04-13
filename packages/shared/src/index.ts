@@ -7,25 +7,31 @@ import { registerLinkTools } from "./tools/links.js";
 import { registerQueryTools } from "./tools/queries.js";
 import { registerVizTools } from "./tools/viz.js";
 import { buildInstructions, registerResources } from "./instructions.js";
+import type { ToolOptions } from "./models/types.js";
 
 export { initEmbeddings, setEmbedder, EMBEDDING_DIM } from "./embeddings/local.js";
 export { closeAll } from "./db/queries.js";
 export { getCurrentUser, runAsUser } from "./context.js";
+export type { ToolOptions } from "./models/types.js";
 
-export async function createServer(options?: { embeddingModel?: string; mode?: "local" | "selfhosted" }): Promise<McpServer> {
+export async function createServer(options?: { embeddingModel?: string; mode?: "local" | "selfhosted"; validAssignees?: string[] }): Promise<McpServer> {
   await initEmbeddings(options?.embeddingModel);
 
   const mode = options?.mode ?? "local";
+  const toolOptions: ToolOptions = {
+    mode,
+    validAssignees: options?.validAssignees,
+  };
   const server = new McpServer(
     { name: "willet", version: "1.0.0" },
     { instructions: buildInstructions(mode) },
   );
 
   registerProjectTools(server);
-  registerTaskTools(server);
+  registerTaskTools(server, toolOptions);
   registerLinkTools(server);
-  registerQueryTools(server);
-  registerVizTools(server);
+  registerQueryTools(server, toolOptions);
+  registerVizTools(server, toolOptions);
   registerResources(server, mode);
 
   return server;

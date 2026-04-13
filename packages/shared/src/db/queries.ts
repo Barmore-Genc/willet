@@ -27,8 +27,9 @@ import type {
 
 // --- Paths ---
 
-const BASE_DIR = process.env.WILLET_DATA_DIR || join(homedir(), ".willet");
-const REGISTRY_PATH = join(BASE_DIR, "registry.db");
+function getBaseDir(): string {
+  return process.env.WILLET_DATA_DIR || join(homedir(), ".willet");
+}
 
 // --- DB connection cache ---
 
@@ -37,8 +38,9 @@ const projectDbs = new Map<string, Database.Database>();
 
 export function getRegistryDb(): Database.Database {
   if (!registryDb) {
-    mkdirSync(BASE_DIR, { recursive: true });
-    registryDb = new Database(REGISTRY_PATH);
+    const baseDir = getBaseDir();
+    mkdirSync(baseDir, { recursive: true });
+    registryDb = new Database(join(baseDir, "registry.db"));
     applyRegistrySchema(registryDb);
   }
   return registryDb;
@@ -47,7 +49,7 @@ export function getRegistryDb(): Database.Database {
 export function getProjectDb(projectId: string): Database.Database {
   let db = projectDbs.get(projectId);
   if (!db) {
-    const dir = join(BASE_DIR, "projects", projectId);
+    const dir = join(getBaseDir(), "projects", projectId);
     mkdirSync(dir, { recursive: true });
     db = new Database(join(dir, "tasks.db"));
     applySchema(db);
@@ -173,6 +175,7 @@ interface TaskRow {
   actual: string | null;
   tags: string;
   parent_task_id: string | null;
+  assignee: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -235,6 +238,7 @@ export async function createTask(
     estimate?: string;
     tags?: string[];
     parent_task_id?: string;
+    assignee?: string;
     metadata?: Record<string, unknown>;
     links?: Array<{ target_task_id: string; link_type: LinkType }>;
     initial_comment?: string;
@@ -247,8 +251,8 @@ export async function createTask(
   const status = input.status ?? "open";
 
   db.prepare(`
-    INSERT INTO tasks (id, title, description, status, type, priority, estimate, tags, parent_task_id, created_at, updated_at, metadata)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (id, title, description, status, type, priority, estimate, tags, parent_task_id, assignee, created_at, updated_at, metadata)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     input.title,
@@ -259,6 +263,7 @@ export async function createTask(
     input.estimate ?? null,
     JSON.stringify(tags),
     input.parent_task_id ?? null,
+    input.assignee ?? null,
     now,
     now,
     JSON.stringify(metadata)
@@ -304,6 +309,7 @@ export async function updateTask(
     estimate?: string | null;
     tags?: string[];
     parent_task_id?: string | null;
+    assignee?: string | null;
     metadata?: Record<string, unknown>;
     status?: Status;
     completed_at?: string | null;
@@ -346,6 +352,7 @@ export async function updateTask(
   diffField("status", input.status, current.status);
   diffField("completed_at", input.completed_at, current.completed_at);
   diffField("parent_task_id", input.parent_task_id, current.parent_task_id);
+  diffField("assignee", input.assignee, current.assignee);
   diffField("tags", input.tags, current.tags, (v) => JSON.stringify(v));
   diffField("metadata", input.metadata, current.metadata, (v) => JSON.stringify(v));
 
@@ -524,6 +531,7 @@ export function listTasks(
     priority?: Priority | Priority[];
     tags?: string[];
     parent_task_id?: string | null;
+    assignee?: string | null;
     created_after?: string;
     created_before?: string;
     completed_after?: string;
@@ -568,6 +576,15 @@ export function listTasks(
     } else {
       conditions.push("parent_task_id = ?");
       params.push(filters.parent_task_id);
+    }
+  }
+
+  if (filters.assignee !== undefined) {
+    if (filters.assignee === null) {
+      conditions.push("assignee IS NULL");
+    } else {
+      conditions.push("assignee = ?");
+      params.push(filters.assignee);
     }
   }
 

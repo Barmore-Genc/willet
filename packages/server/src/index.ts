@@ -9,4 +9,6 @@ if (!configPath) {
 }
 
 const config = loadConfig(configPath);
-await startHttpServer(config, () => createServer({ mode: "selfhosted" }));
+await startHttpServer(config, ({ validAssignees }) =>
+  createServer({ mode: "selfhosted", validAssignees })
+);

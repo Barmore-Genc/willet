@@ -19,11 +19,13 @@ export function applySchema(db: Database.Database): void {
       actual TEXT,
       tags TEXT NOT NULL DEFAULT '[]',
       parent_task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+      assignee TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       completed_at TEXT,
       metadata TEXT NOT NULL DEFAULT '{}'
     );
+
 
     CREATE TABLE IF NOT EXISTS task_history (
       id TEXT PRIMARY KEY,
@@ -67,6 +69,15 @@ export function applySchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id);
     CREATE INDEX IF NOT EXISTS idx_task_history_task ON task_history(task_id);
   `);
+
+  // Migration: add assignee column to existing databases
+  const hasAssignee = db
+    .prepare("SELECT COUNT(*) as cnt FROM pragma_table_info('tasks') WHERE name = 'assignee'")
+    .get() as { cnt: number };
+  if (hasAssignee.cnt === 0) {
+    db.exec("ALTER TABLE tasks ADD COLUMN assignee TEXT");
+  }
+  db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee)");
 
   // FTS5 virtual table — can't use IF NOT EXISTS, so check first
   const ftsExists = db

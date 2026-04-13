@@ -259,9 +259,11 @@ describe("Willet HTTP Server E2E", () => {
     const config = makeConfig(port);
     baseUrl = `http://localhost:${port}`;
 
-    handle = await startHttpServer(config, createServer, {
-      skipProcessHandlers: true,
-    });
+    handle = await startHttpServer(
+      config,
+      ({ validAssignees }) => createServer({ mode: "selfhosted", validAssignees }),
+      { skipProcessHandlers: true },
+    );
 
     // Wait for server to be ready
     await new Promise<void>((resolve) => {
@@ -437,6 +439,7 @@ describe("Willet HTTP Server E2E", () => {
           title: "Fix the widget",
           description: "The widget is broken and needs fixing",
           priority: "high",
+          assignee: "alice",
         })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(createTaskRes.result).toBeTruthy();
@@ -571,6 +574,270 @@ describe("Willet HTTP Server E2E", () => {
         body: JSON.stringify(mcpListTools(2)),
       });
       expect(postRes.status).toBe(400);
+    });
+  });
+
+  // --- Assignee tests (self-hosted mode) ---
+
+  describe("Assignee handling", () => {
+    // Share a single OAuth session across all assignee tests to avoid
+    // hitting the MCP SDK's rate limit on /register.
+    let mcpPost: (body: unknown) => Promise<Record<string, unknown>>;
+    let nextId = 2;
+
+    beforeAll(async () => {
+      const { accessToken } = await performOAuthFlow(baseUrl, TEST_SECRET_ALICE);
+      const session = await initMcpSession(baseUrl, accessToken);
+      mcpPost = session.mcpPost;
+    });
+
+    function id() {
+      return nextId++;
+    }
+
+    async function setupProject(name: string, dirSuffix: string): Promise<string> {
+      const initRes = (await mcpPost(
+        mcpToolCall(id(), "init_project", {
+          name,
+          directory: join(dataDir, dirSuffix),
+        })
+      )) as { result?: { content: Array<{ text: string }> } };
+      return initRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+    }
+
+    it("should expose assignee in tool schemas and require it for create_task", async () => {
+      const body = (await mcpPost(mcpListTools(id()))) as {
+        result: {
+          tools: Array<{
+            name: string;
+            inputSchema: { properties?: Record<string, unknown>; required?: string[] };
+          }>;
+        };
+      };
+      const createTool = body.result.tools.find((t) => t.name === "create_task")!;
+      const updateTool = body.result.tools.find((t) => t.name === "update_task")!;
+      const listTool = body.result.tools.find((t) => t.name === "list_tasks")!;
+
+      // All three should have assignee in their schemas
+      expect(createTool.inputSchema.properties).toHaveProperty("assignee");
+      expect(updateTool.inputSchema.properties).toHaveProperty("assignee");
+      expect(listTool.inputSchema.properties).toHaveProperty("assignee");
+
+      // create_task should require assignee
+      expect(createTool.inputSchema.required).toContain("assignee");
+    });
+
+    it("should reject create_task without assignee", async () => {
+      const projectId = await setupProject("Require Assignee", "require-assignee");
+
+      const res = (await mcpPost(
+        mcpToolCall(id(), "create_task", {
+          project_id: projectId,
+          title: "No assignee",
+        })
+      )) as { result?: { content: Array<{ text: string }> }; error?: unknown };
+      const text = JSON.stringify(res);
+      expect(text).toMatch(/error|isError|required/i);
+    });
+
+    it("should reject invalid assignee on create_task", async () => {
+      const projectId = await setupProject("Invalid Assignee Create", "invalid-assignee-create");
+
+      const res = (await mcpPost(
+        mcpToolCall(id(), "create_task", {
+          project_id: projectId,
+          title: "Bad assignee",
+          assignee: "nonexistent-user",
+        })
+      )) as { result?: { content: Array<{ text: string }>; isError?: boolean } };
+      expect(res.result?.isError).toBe(true);
+      expect(res.result!.content[0].text).toContain("Invalid assignee");
+      expect(res.result!.content[0].text).toContain("alice");
+      expect(res.result!.content[0].text).toContain("bob");
+    });
+
+    it("should reject invalid assignee on update_task", async () => {
+      const projectId = await setupProject("Invalid Assignee Update", "invalid-assignee-update");
+
+      // Create a valid task first
+      const createRes = (await mcpPost(
+        mcpToolCall(id(), "create_task", {
+          project_id: projectId,
+          title: "Valid task",
+          assignee: "alice",
+        })
+      )) as { result?: { content: Array<{ text: string }> } };
+      const taskId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+      // Try updating to invalid assignee
+      const updateRes = (await mcpPost(
+        mcpToolCall(id(), "update_task", {
+          project_id: projectId,
+          task_id: taskId,
+          assignee: "nonexistent-user",
+        })
+      )) as { result?: { content: Array<{ text: string }>; isError?: boolean } };
+      expect(updateRes.result?.isError).toBe(true);
+      expect(updateRes.result!.content[0].text).toContain("Invalid assignee");
+    });
+
+    it("should include assignee in create, get, and list outputs", async () => {
+      const projectId = await setupProject("Assignee Output", "assignee-output");
+
+      // create_task
+      const createRes = (await mcpPost(
+        mcpToolCall(id(), "create_task", {
+          project_id: projectId,
+          title: "Alice's task",
+          assignee: "alice",
+        })
+      )) as { result?: { content: Array<{ text: string }> } };
+      const createText = createRes.result!.content[0].text;
+      expect(createText).toContain('"assignee": "alice"');
+      const taskId = createText.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+      // get_task
+      const getRes = (await mcpPost(
+        mcpToolCall(id(), "get_task", { project_id: projectId, task_id: taskId })
+      )) as { result?: { content: Array<{ text: string }> } };
+      expect(getRes.result!.content[0].text).toContain('"assignee": "alice"');
+
+      // list_tasks
+      const listRes = (await mcpPost(
+        mcpToolCall(id(), "list_tasks", { project_id: projectId })
+      )) as { result?: { content: Array<{ text: string }> } };
+      expect(listRes.result!.content[0].text).toContain('"assignee": "alice"');
+    });
+
+    it("should update assignee and reflect the change", async () => {
+      const projectId = await setupProject("Reassign Project", "reassign-project");
+
+      // Create task assigned to alice
+      const createRes = (await mcpPost(
+        mcpToolCall(id(), "create_task", {
+          project_id: projectId,
+          title: "Reassignable task",
+          assignee: "alice",
+        })
+      )) as { result?: { content: Array<{ text: string }> } };
+      const taskId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+      // Reassign to bob
+      const updateRes = (await mcpPost(
+        mcpToolCall(id(), "update_task", {
+          project_id: projectId,
+          task_id: taskId,
+          assignee: "bob",
+        })
+      )) as { result?: { content: Array<{ text: string }> } };
+      expect(updateRes.result!.content[0].text).toContain('"assignee": "bob"');
+
+      // Verify via get_task
+      const getRes = (await mcpPost(
+        mcpToolCall(id(), "get_task", { project_id: projectId, task_id: taskId })
+      )) as { result?: { content: Array<{ text: string }> } };
+      expect(getRes.result!.content[0].text).toContain('"assignee": "bob"');
+
+      // Clear assignee
+      const clearRes = (await mcpPost(
+        mcpToolCall(id(), "update_task", {
+          project_id: projectId,
+          task_id: taskId,
+          assignee: null,
+        })
+      )) as { result?: { content: Array<{ text: string }> } };
+      expect(clearRes.result!.content[0].text).toContain('"assignee": null');
+    });
+
+    it("should filter tasks by assignee", async () => {
+      const projectId = await setupProject("Filter Project", "assignee-filter");
+
+      // Create tasks with different assignees
+      await mcpPost(mcpToolCall(id(), "create_task", {
+        project_id: projectId, title: "Alice's task", assignee: "alice",
+      }));
+      await mcpPost(mcpToolCall(id(), "create_task", {
+        project_id: projectId, title: "Bob's task", assignee: "bob",
+      }));
+
+      // Filter for alice
+      const aliceRes = (await mcpPost(
+        mcpToolCall(id(), "list_tasks", { project_id: projectId, assignee: "alice" })
+      )) as { result?: { content: Array<{ text: string }> } };
+      const aliceText = aliceRes.result!.content[0].text;
+      expect(aliceText).toContain("Alice's task");
+      expect(aliceText).not.toContain("Bob's task");
+
+      // Filter for bob
+      const bobRes = (await mcpPost(
+        mcpToolCall(id(), "list_tasks", { project_id: projectId, assignee: "bob" })
+      )) as { result?: { content: Array<{ text: string }> } };
+      const bobText = bobRes.result!.content[0].text;
+      expect(bobText).toContain("Bob's task");
+      expect(bobText).not.toContain("Alice's task");
+    });
+
+    it("should filter for unassigned tasks", async () => {
+      const projectId = await setupProject("Unassigned Filter", "unassigned-filter");
+
+      // Create assigned task, then clear its assignee to make it unassigned
+      const createRes = (await mcpPost(
+        mcpToolCall(id(), "create_task", {
+          project_id: projectId, title: "Was assigned", assignee: "alice",
+        })
+      )) as { result?: { content: Array<{ text: string }> } };
+      const taskId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+      await mcpPost(mcpToolCall(id(), "update_task", {
+        project_id: projectId, task_id: taskId, assignee: null,
+      }));
+
+      // Create another assigned task
+      await mcpPost(mcpToolCall(id(), "create_task", {
+        project_id: projectId, title: "Still assigned", assignee: "bob",
+      }));
+
+      // Filter for unassigned (assignee: null)
+      const unassignedRes = (await mcpPost(
+        mcpToolCall(id(), "list_tasks", { project_id: projectId, assignee: null })
+      )) as { result?: { content: Array<{ text: string }> } };
+      const text = unassignedRes.result!.content[0].text;
+      expect(text).toContain("Was assigned");
+      expect(text).not.toContain("Still assigned");
+    });
+
+    it("should preserve assignee through lifecycle transitions", async () => {
+      const projectId = await setupProject("Lifecycle Assignee", "lifecycle-assignee");
+
+      const createRes = (await mcpPost(
+        mcpToolCall(id(), "create_task", {
+          project_id: projectId, title: "Lifecycle task", assignee: "alice",
+        })
+      )) as { result?: { content: Array<{ text: string }> } };
+      const taskId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+      // start_task
+      const startRes = (await mcpPost(
+        mcpToolCall(id(), "start_task", { project_id: projectId, task_id: taskId })
+      )) as { result?: { content: Array<{ text: string }> } };
+      expect(startRes.result!.content[0].text).toContain('"assignee": "alice"');
+
+      // complete_task
+      const completeRes = (await mcpPost(
+        mcpToolCall(id(), "complete_task", { project_id: projectId, task_id: taskId })
+      )) as { result?: { content: Array<{ text: string }> } };
+      expect(completeRes.result!.content[0].text).toContain('"assignee": "alice"');
+
+      // reopen_task
+      const reopenRes = (await mcpPost(
+        mcpToolCall(id(), "reopen_task", { project_id: projectId, task_id: taskId })
+      )) as { result?: { content: Array<{ text: string }> } };
+      expect(reopenRes.result!.content[0].text).toContain('"assignee": "alice"');
+
+      // cancel_task
+      const cancelRes = (await mcpPost(
+        mcpToolCall(id(), "cancel_task", { project_id: projectId, task_id: taskId })
+      )) as { result?: { content: Array<{ text: string }> } };
+      expect(cancelRes.result!.content[0].text).toContain('"assignee": "alice"');
     });
   });
 

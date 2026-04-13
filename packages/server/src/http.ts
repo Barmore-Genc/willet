@@ -18,7 +18,7 @@ export interface HttpServerHandle {
 
 export async function startHttpServer(
   config: WilletConfig,
-  createServer: () => Promise<McpServer>,
+  createServer: (serverOptions: { validAssignees: string[] }) => Promise<McpServer>,
   options?: { skipProcessHandlers?: boolean }
 ): Promise<HttpServerHandle> {
   const provider = new WilletAuthProvider(config);
@@ -123,7 +123,7 @@ export async function startHttpServer(
           if (sid) transports.delete(sid);
         };
 
-        const server = await createServer();
+        const server = await createServer({ validAssignees: Object.keys(provider.config.users) });
         await server.connect(transport);
         await runAsUser(username, () =>
           transport.handleRequest(req, res, req.body)
