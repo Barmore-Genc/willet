@@ -5,7 +5,9 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "willet-mcp": "bin/willet-mcp.js"
+    "willet-mcp": "bin/willet-mcp.js",
+    "willet-export": "bin/willet-export.js",
+    "willet-import": "bin/willet-import.js"
   },
   "files": [
     "dist/",
@@ -42,7 +44,9 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^25.5.0",
     "@willet/shared": "workspace:*",
+    "archiver": "^7.0.0",
     "esbuild": "^0.25.0",
+    "node-stream-zip": "^1.15.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "ulid": "^3.0.2",

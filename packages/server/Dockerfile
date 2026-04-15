@@ -15,7 +15,10 @@ RUN pnpm install --frozen-lockfile
 
 # Copy source
 COPY packages/shared/ packages/shared/
-COPY packages/server/ packages/server/
+COPY packages/server/src/ packages/server/src/
+COPY packages/server/tsconfig.json packages/server/
+COPY packages/server/tsconfig.build.json packages/server/
+COPY packages/server/docker-entrypoint.sh packages/server/
 
 # Build shared first, then server
 RUN pnpm --filter @willet/shared run build:server && pnpm --filter @willet/server run build
@@ -47,4 +50,8 @@ ENV WILLET_CONFIG=/config/willet.toml
 EXPOSE 3000
 VOLUME ["/data", "/config"]
 
-CMD ["node", "packages/server/dist/index.js"]
+COPY --from=builder /app/packages/server/docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["serve"]

@@ -1,7 +1,7 @@
 import { build } from "esbuild";
 
 await build({
-  entryPoints: ["src/index.ts"],
+  entryPoints: ["src/index.ts", "src/export.ts", "src/import.ts"],
   bundle: true,
   outdir: "dist",
   format: "esm",

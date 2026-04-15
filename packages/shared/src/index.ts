@@ -13,6 +13,16 @@ export { initEmbeddings, setEmbedder, EMBEDDING_DIM } from "./embeddings/local.j
 export { closeAll } from "./db/queries.js";
 export { getCurrentUser, runAsUser } from "./context.js";
 export type { ToolOptions } from "./models/types.js";
+export {
+  gatherTaskData,
+  tasksToCSV,
+  tasksToJSON,
+  exportProject,
+  importTasksIntoDb,
+  importFromZip,
+} from "./export.js";
+export type { TaskWithExtras, ExportTaskJson, ImportResult } from "./export.js";
+export { runExportCli, runImportCli } from "./export-cli.js";
 
 export async function createServer(options?: { embeddingModel?: string; mode?: "local" | "selfhosted"; validAssignees?: string[] }): Promise<McpServer> {
   await initEmbeddings(options?.embeddingModel);
