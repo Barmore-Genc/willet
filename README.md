@@ -15,6 +15,8 @@ Willet gives AI coding agents (like Claude Code) full project-management capabil
 
 ## Two Ways to Run
 
+Willet can run locally on your machine or as a self-hosted server for your team.
+
 | | **Local** | **Self-hosted** |
 |---|---|---|
 | **Users** | Single user | Multi-user with per-user auth |
@@ -92,7 +94,7 @@ Create a `willet.toml` file:
 ```toml
 [server]
 port = 3000
-base_url = "https://willet.example.com"
+base_url = "http://<server-ip-or-domain>:3000"
 
 [users.alice]
 secret = "change-me-to-a-random-string"
@@ -138,13 +140,13 @@ For Claude Code, add this to your `.mcp.json`:
   "mcpServers": {
     "willet": {
       "type": "streamable-http",
-      "url": "https://willet.example.com/mcp"
+      "url": "http://<server-ip-or-domain>:3000/mcp"
     }
   }
 }
 ```
 
-Users authenticate via the MCP OAuth flow using their secret from the config file.
+When a user connects for the first time, their MCP client will open a page asking for a secret key. Share the secret from the config file with each user — that's all they need to log in.
 
 ## Export and Import
 
