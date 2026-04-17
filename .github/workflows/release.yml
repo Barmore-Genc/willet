@@ -7,9 +7,10 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 jobs:
-  build-and-test:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -20,9 +21,11 @@ jobs:
           cache: "pnpm"
       - run: pnpm install
       - run: pnpm run build
+      - run: pnpm run check
+      - run: pnpm run test
 
   npm-pack:
-    needs: build-and-test
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -40,7 +43,7 @@ jobs:
           path: "packages/mcp/*.tgz"
 
   docker:
-    needs: build-and-test
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -91,22 +94,27 @@ jobs:
           files: |
             artifacts/*.tgz
 
-      # Uncomment when npm credentials are configured:
+  npm-publish:
+    needs: [npm-pack, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - name: Set version from git tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm --no-git-tag-version version "$VERSION" --workspaces --include-workspace-root
+      - run: pnpm install
+      - run: pnpm run build
       # @willet/shared must be published before @willet/mcp (mcp depends on it).
-      #
-      # - uses: actions/checkout@v6
-      # - uses: pnpm/action-setup@v5
-      # - uses: actions/setup-node@v6
-      #   with:
-      #     node-version: "22"
-      #     registry-url: "https://registry.npmjs.org"
-      # - run: pnpm install
-      # - run: pnpm run build
-      # - name: Publish @willet/shared to npm
-      #   run: cd packages/shared && npm publish --access public
-      #   env:
-      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      # - name: Publish @willet/mcp to npm
-      #   run: cd packages/mcp && npm publish --access public
-      #   env:
-      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish @willet/shared to npm
+        run: cd packages/shared && npm publish --access public --provenance
+      - name: Publish @willet/mcp to npm
+        run: cd packages/mcp && npm publish --access public --provenance

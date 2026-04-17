@@ -59,12 +59,6 @@ packages/
 - **npm**: `cd packages/mcp && npm pack` — esbuild bundle + bin (no separate @willet/shared publish needed)
 - **Docker**: `docker build -f packages/server/Dockerfile -t willet .`
 
-## Design Docs
-
-- [docs/architecture.md](docs/architecture.md) - data model, storage, embedding strategy
-- [docs/mcp-tools.md](docs/mcp-tools.md) - full tool catalog with parameters
-- [docs/design-decisions.md](docs/design-decisions.md) - key decisions and rationale
-
 ## Conventions
 
 - Use Zod schemas for all MCP tool input validation; derive TypeScript types from them
