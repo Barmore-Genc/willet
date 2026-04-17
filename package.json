@@ -18,8 +18,7 @@
     "clean": "pnpm -r --parallel run clean",
     "build": "pnpm -r run build",
     "check": "pnpm -r run check",
-    "test": "pnpm -r run --if-present test",
-    "prepare": "husky"
+    "test": "pnpm -r run --if-present test"
   },
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.20.0",
@@ -35,7 +34,6 @@
     }
   },
   "devDependencies": {
-    "husky": "^9.1.7",
     "typescript": "^6.0.2",
     "vitest": "^4.1.2"
   }
