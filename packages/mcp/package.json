@@ -1,6 +1,6 @@
 {
   "name": "@willet/mcp",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "Willet MCP server — local stdio transport",
   "type": "module",
   "main": "dist/index.js",

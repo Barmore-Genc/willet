@@ -1,6 +1,6 @@
 {
   "name": "@willet/server",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "Willet HTTP server — deployed version with OAuth auth",
   "type": "module",
   "main": "dist/index.js",

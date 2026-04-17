@@ -1,6 +1,6 @@
 {
   "name": "willet",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "private": true,
   "description": "A local-first task tracking MCP server for AI agents",
   "repository": {
