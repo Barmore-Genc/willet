@@ -8,7 +8,7 @@ Instead, please report it privately by emailing **willet.support@bgenc.dev**. In
 
 ## What to Expect
 
-- We aim to acknowledge your report within **48 hours**.
+- We aim to acknowledge your report within **7 days**.
 - We will work with you to understand the issue, develop a fix, and coordinate disclosure timing.
 - We will credit reporters in the release notes unless you prefer to remain anonymous.
 
