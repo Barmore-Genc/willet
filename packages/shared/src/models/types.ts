@@ -286,11 +286,19 @@ function truncateString(s: string, max: number): string {
 
 function shortTitle(title: string): string {
   const firstLine = title.split("\n", 1)[0];
-  return truncateString(firstLine, SHORT_TITLE_MAX);
+  const hasMoreLines = firstLine.length < title.length;
+  if (firstLine.length > SHORT_TITLE_MAX) {
+    return firstLine.slice(0, SHORT_TITLE_MAX - 1) + "…";
+  }
+  return hasMoreLines ? firstLine + "…" : firstLine;
 }
 
+// Tags are an array of strings. When truncated, we append a sentinel element
+// like "+3 more" so the shape stays `string[]` and the agent sees the count.
 function shortTags(tags: string[]): string[] {
-  return tags.slice(0, SHORT_TAGS_MAX);
+  if (tags.length <= SHORT_TAGS_MAX) return tags;
+  const remaining = tags.length - SHORT_TAGS_MAX;
+  return [...tags.slice(0, SHORT_TAGS_MAX), `+${remaining} more`];
 }
 
 export type TaskProjection = Record<string, unknown>;

@@ -656,42 +656,245 @@ describe("Willet MCP stdio E2E", () => {
     expect(result.isError).toBe(true);
   });
 
-  it("should trim output fields when verbosity=short", async () => {
-    const projectDir = join(dataDir, "verbosity-project");
-    const initResult = await client.callTool({
-      name: "init_project",
-      arguments: { name: "Verbosity Project", directory: projectDir },
-    });
-    const projectId = (initResult.content as Array<{ text: string }>)[0]
-      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+  describe("verbosity modes", () => {
+    let verbProjectId: string;
+    let parentId: string;
+    let childId: string;
+    const LONG_DESCRIPTION = "lorem ipsum ".repeat(40); // > 200 chars
+    const LONG_TITLE = "A".repeat(200);
 
-    await client.callTool({
-      name: "create_task",
-      arguments: {
-        project_id: projectId,
-        title: "A task with a description",
-        description: "This description should be absent in short mode.",
-        priority: "high",
-      },
+    beforeAll(async () => {
+      const projectDir = join(dataDir, "verbosity-project");
+      const initResult = await client.callTool({
+        name: "init_project",
+        arguments: { name: "Verbosity Project", directory: projectDir },
+      });
+      verbProjectId = (initResult.content as Array<{ text: string }>)[0]
+        .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+      const parentRes = await client.callTool({
+        name: "create_task",
+        arguments: {
+          project_id: verbProjectId,
+          title: "Authentication bug parent",
+          description: LONG_DESCRIPTION,
+          priority: "high",
+          tags: ["auth", "security", "bug", "urgent", "backend", "sixth-tag"],
+        },
+      });
+      parentId = (parentRes.content as Array<{ text: string }>)[0]
+        .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+      const childRes = await client.callTool({
+        name: "create_task",
+        arguments: {
+          project_id: verbProjectId,
+          title: LONG_TITLE,
+          description: LONG_DESCRIPTION,
+          priority: "medium",
+        },
+      });
+      childId = (childRes.content as Array<{ text: string }>)[0]
+        .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+      await client.callTool({
+        name: "link_tasks",
+        arguments: {
+          project_id: verbProjectId,
+          source_task_id: parentId,
+          target_task_id: childId,
+          link_type: "blocks",
+        },
+      });
     });
 
-    const shortList = await client.callTool({
-      name: "list_tasks",
-      arguments: { project_id: projectId, verbosity: "short" },
-    });
-    const shortText = (shortList.content as Array<{ text: string }>)[0].text;
-    expect(shortText).toContain("A task with a description");
-    expect(shortText).toContain("high");
-    expect(shortText).not.toContain("This description should be absent");
-    expect(shortText).not.toContain("created_at");
-    expect(shortText).not.toContain("metadata");
+    describe("list_tasks", () => {
+      it("short: strips description/metadata/timestamps, truncates title+tags", async () => {
+        const res = await client.callTool({
+          name: "list_tasks",
+          arguments: { project_id: verbProjectId, verbosity: "short" },
+        });
+        const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+        const parent = data.tasks.find((t: { id: string }) => t.id === parentId);
+        const child = data.tasks.find((t: { id: string }) => t.id === childId);
+        expect(parent).toBeDefined();
+        expect(child).toBeDefined();
+        for (const t of [parent, child]) {
+          expect(t).not.toHaveProperty("description");
+          expect(t).not.toHaveProperty("created_at");
+          expect(t).not.toHaveProperty("updated_at");
+          expect(t).not.toHaveProperty("metadata");
+          expect(t).toHaveProperty("id");
+          expect(t).toHaveProperty("title");
+          expect(t).toHaveProperty("status");
+          expect(t).toHaveProperty("priority");
+          expect(t).toHaveProperty("type");
+          expect(t).toHaveProperty("estimate");
+          expect(t).toHaveProperty("tags");
+          expect(t).toHaveProperty("due_date");
+        }
+        // parent has 6 tags → should show 5 plus a "+1 more" sentinel
+        expect(parent.tags).toEqual(["auth", "security", "bug", "urgent", "backend", "+1 more"]);
+        // child has a 200-char title → should be truncated to ≤ 80 with an ellipsis
+        expect((child.title as string).length).toBeLessThanOrEqual(80);
+        expect((child.title as string).endsWith("…")).toBe(true);
+      });
 
-    const detailedList = await client.callTool({
-      name: "list_tasks",
-      arguments: { project_id: projectId, verbosity: "detailed" },
+      it("detailed (default): includes all fields, description truncated with ellipsis", async () => {
+        const res = await client.callTool({
+          name: "list_tasks",
+          arguments: { project_id: verbProjectId },
+        });
+        const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+        const parent = data.tasks.find((t: { id: string }) => t.id === parentId);
+        expect(parent).toBeDefined();
+        expect(parent.description.length).toBeLessThanOrEqual(200);
+        expect(parent.description.endsWith("…")).toBe(true);
+        expect(parent).toHaveProperty("created_at");
+        expect(parent).toHaveProperty("metadata");
+        // Full tags, no sentinel
+        expect(parent.tags).toEqual(["auth", "security", "bug", "urgent", "backend", "sixth-tag"]);
+      });
+
+      it("full: returns everything verbatim, no truncation", async () => {
+        const res = await client.callTool({
+          name: "list_tasks",
+          arguments: { project_id: verbProjectId, verbosity: "full" },
+        });
+        const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+        const parent = data.tasks.find((t: { id: string }) => t.id === parentId);
+        const child = data.tasks.find((t: { id: string }) => t.id === childId);
+        expect(parent.description).toBe(LONG_DESCRIPTION);
+        expect(parent.tags).toEqual(["auth", "security", "bug", "urgent", "backend", "sixth-tag"]);
+        expect(child.title).toBe(LONG_TITLE);
+      });
     });
-    const detailedText = (detailedList.content as Array<{ text: string }>)[0].text;
-    expect(detailedText).toContain("This description should be absent");
-    expect(detailedText).toContain("created_at");
+
+    describe("search_tasks", () => {
+      it("short: trims payload but preserves score", async () => {
+        const res = await client.callTool({
+          name: "search_tasks",
+          arguments: {
+            project_id: verbProjectId,
+            query: "authentication",
+            verbosity: "short",
+          },
+        });
+        const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+        expect(data.length).toBeGreaterThan(0);
+        for (const t of data) {
+          expect(t).toHaveProperty("score");
+          expect(t).not.toHaveProperty("description");
+          expect(t).not.toHaveProperty("created_at");
+        }
+      });
+
+      it("full: includes description and score", async () => {
+        const res = await client.callTool({
+          name: "search_tasks",
+          arguments: {
+            project_id: verbProjectId,
+            query: "authentication",
+            verbosity: "full",
+          },
+        });
+        const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+        const match = data.find((t: { id: string }) => t.id === parentId);
+        expect(match).toBeDefined();
+        expect(match.description).toBe(LONG_DESCRIPTION);
+        expect(match).toHaveProperty("score");
+      });
+    });
+
+    describe("get_task", () => {
+      it("full (default): returns full task unchanged", async () => {
+        const res = await client.callTool({
+          name: "get_task",
+          arguments: { project_id: verbProjectId, task_id: parentId },
+        });
+        const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+        expect(data.description).toBe(LONG_DESCRIPTION);
+        expect(data).toHaveProperty("comments");
+        expect(data).toHaveProperty("links");
+      });
+
+      it("short: trims the main task but still attaches comments and links", async () => {
+        const res = await client.callTool({
+          name: "get_task",
+          arguments: { project_id: verbProjectId, task_id: parentId, verbosity: "short" },
+        });
+        const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+        expect(data).not.toHaveProperty("description");
+        expect(data).not.toHaveProperty("created_at");
+        expect(data).toHaveProperty("id", parentId);
+        expect(data).toHaveProperty("comments");
+        expect(data).toHaveProperty("links");
+        expect(Array.isArray(data.links)).toBe(true);
+      });
+
+      it("short with include_subtasks: projects subtasks too", async () => {
+        // parentId has no parent_task_id-style children, so subtasks will be empty;
+        // but the key invariant is that, when present, subtasks also get projected.
+        const res = await client.callTool({
+          name: "get_task",
+          arguments: {
+            project_id: verbProjectId,
+            task_id: parentId,
+            include_subtasks: true,
+            verbosity: "short",
+          },
+        });
+        const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+        expect(Array.isArray(data.subtasks)).toBe(true);
+        for (const s of data.subtasks) {
+          expect(s).not.toHaveProperty("description");
+          expect(s).not.toHaveProperty("metadata");
+        }
+      });
+
+      it("detailed: truncates description on the main task", async () => {
+        const res = await client.callTool({
+          name: "get_task",
+          arguments: { project_id: verbProjectId, task_id: parentId, verbosity: "detailed" },
+        });
+        const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+        expect(data.description.length).toBeLessThanOrEqual(200);
+        expect(data.description.endsWith("…")).toBe(true);
+      });
+    });
+
+    describe("get_task_graph", () => {
+      it("short: nodes are trimmed but edges untouched", async () => {
+        const res = await client.callTool({
+          name: "get_task_graph",
+          arguments: { project_id: verbProjectId, task_id: parentId, verbosity: "short" },
+        });
+        const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+        expect(data.nodes.length).toBeGreaterThanOrEqual(2);
+        for (const n of data.nodes) {
+          expect(n).not.toHaveProperty("description");
+          expect(n).not.toHaveProperty("metadata");
+          expect(n).toHaveProperty("id");
+          expect(n).toHaveProperty("title");
+        }
+        expect(Array.isArray(data.edges)).toBe(true);
+        expect(data.edges.length).toBeGreaterThan(0);
+        for (const e of data.edges) {
+          expect(e).toHaveProperty("source_task_id");
+          expect(e).toHaveProperty("target_task_id");
+          expect(e).toHaveProperty("link_type");
+        }
+      });
+
+      it("full: nodes include full description", async () => {
+        const res = await client.callTool({
+          name: "get_task_graph",
+          arguments: { project_id: verbProjectId, task_id: parentId, verbosity: "full" },
+        });
+        const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+        const parent = data.nodes.find((n: { id: string }) => n.id === parentId);
+        expect(parent.description).toBe(LONG_DESCRIPTION);
+      });
+    });
   });
 });

@@ -53,16 +53,32 @@ describe("projectTask — short", () => {
     expect(out).not.toHaveProperty("assignee");
   });
 
-  it("truncates long titles and takes only the first line", () => {
+  it("truncates long titles with an ellipsis indicator", () => {
     const long = "A".repeat(200);
-    const multi = `first line\nsecond line`;
-    expect((projectTask(makeTask({ title: long }), "short", selfhosted).title as string).length).toBeLessThanOrEqual(80);
-    expect(projectTask(makeTask({ title: multi }), "short", selfhosted).title).toBe("first line");
+    const out = projectTask(makeTask({ title: long }), "short", selfhosted).title as string;
+    expect(out.length).toBeLessThanOrEqual(80);
+    expect(out.endsWith("…")).toBe(true);
   });
 
-  it("truncates tags to 5", () => {
+  it("marks multi-line titles with an ellipsis even when the first line fits", () => {
+    const multi = `first line\nsecond line`;
+    expect(projectTask(makeTask({ title: multi }), "short", selfhosted).title).toBe("first line…");
+  });
+
+  it("leaves short single-line titles untouched", () => {
+    expect(projectTask(makeTask({ title: "just a title" }), "short", selfhosted).title).toBe("just a title");
+  });
+
+  it("truncates tags to 5 with a '+N more' sentinel", () => {
     const tags = ["a", "b", "c", "d", "e", "f", "g"];
-    expect(projectTask(makeTask({ tags }), "short", selfhosted).tags).toEqual(["a", "b", "c", "d", "e"]);
+    expect(projectTask(makeTask({ tags }), "short", selfhosted).tags).toEqual([
+      "a", "b", "c", "d", "e", "+2 more",
+    ]);
+  });
+
+  it("leaves tags untouched when 5 or fewer", () => {
+    const tags = ["a", "b", "c"];
+    expect(projectTask(makeTask({ tags }), "short", selfhosted).tags).toEqual(["a", "b", "c"]);
   });
 
   it("excludes description, metadata, timestamps", () => {
