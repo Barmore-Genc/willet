@@ -24,6 +24,7 @@ export const SortFieldSchema = z.enum([
   "status",
   "title",
   "type",
+  "due_date",
 ]);
 export type SortField = z.infer<typeof SortFieldSchema>;
 
@@ -60,6 +61,7 @@ export interface Task {
   tags: string[];
   parent_task_id: string | null;
   assignee: string | null;
+  due_date: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -117,6 +119,7 @@ export const CreateTaskInputSchema = z.object({
   tags: z.array(z.string()).optional(),
   parent_task_id: z.string().optional(),
   assignee: z.string().optional(),
+  due_date: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   links: z.array(TaskLinkInputSchema).optional(),
   initial_comment: z.string().optional(),
@@ -132,6 +135,7 @@ export const UpdateTaskInputSchema = z.object({
   tags: z.array(z.string()).optional(),
   parent_task_id: z.string().nullable().optional(),
   assignee: z.string().nullable().optional(),
+  due_date: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -190,6 +194,8 @@ export const ListTasksInputSchema = z.object({
   created_before: z.string().optional(),
   completed_after: z.string().optional(),
   completed_before: z.string().optional(),
+  due_after: z.string().optional(),
+  due_before: z.string().optional(),
   sort: SortFieldSchema.optional(),
   sort_direction: SortDirectionSchema.optional(),
   limit: z.number().int().positive().optional(),
