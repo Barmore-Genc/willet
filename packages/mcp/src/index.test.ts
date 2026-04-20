@@ -655,4 +655,43 @@ describe("Willet MCP stdio E2E", () => {
     });
     expect(result.isError).toBe(true);
   });
+
+  it("should trim output fields when verbosity=short", async () => {
+    const projectDir = join(dataDir, "verbosity-project");
+    const initResult = await client.callTool({
+      name: "init_project",
+      arguments: { name: "Verbosity Project", directory: projectDir },
+    });
+    const projectId = (initResult.content as Array<{ text: string }>)[0]
+      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+    await client.callTool({
+      name: "create_task",
+      arguments: {
+        project_id: projectId,
+        title: "A task with a description",
+        description: "This description should be absent in short mode.",
+        priority: "high",
+      },
+    });
+
+    const shortList = await client.callTool({
+      name: "list_tasks",
+      arguments: { project_id: projectId, verbosity: "short" },
+    });
+    const shortText = (shortList.content as Array<{ text: string }>)[0].text;
+    expect(shortText).toContain("A task with a description");
+    expect(shortText).toContain("high");
+    expect(shortText).not.toContain("This description should be absent");
+    expect(shortText).not.toContain("created_at");
+    expect(shortText).not.toContain("metadata");
+
+    const detailedList = await client.callTool({
+      name: "list_tasks",
+      arguments: { project_id: projectId, verbosity: "detailed" },
+    });
+    const detailedText = (detailedList.content as Array<{ text: string }>)[0].text;
+    expect(detailedText).toContain("This description should be absent");
+    expect(detailedText).toContain("created_at");
+  });
 });

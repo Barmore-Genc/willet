@@ -34,6 +34,9 @@ export type SortDirection = z.infer<typeof SortDirectionSchema>;
 export const GroupBySchema = z.enum(["status", "priority", "type"]);
 export type GroupBy = z.infer<typeof GroupBySchema>;
 
+export const VerbositySchema = z.enum(["short", "detailed", "full"]);
+export type Verbosity = z.infer<typeof VerbositySchema>;
+
 // --- Helper: accept single value or array ---
 
 function stringOrArray<T extends z.ZodType<string>>(schema: T) {
@@ -143,6 +146,7 @@ export const GetTaskInputSchema = z.object({
   task_id: z.string(),
   include_history: z.boolean().optional(),
   include_subtasks: z.boolean().optional(),
+  verbosity: VerbositySchema.optional(),
 });
 
 export const DeleteTaskInputSchema = z.object({
@@ -200,6 +204,7 @@ export const ListTasksInputSchema = z.object({
   sort_direction: SortDirectionSchema.optional(),
   limit: z.number().int().positive().optional(),
   offset: z.number().int().nonnegative().optional(),
+  verbosity: VerbositySchema.optional(),
 });
 
 export const SearchTasksInputSchema = z.object({
@@ -209,11 +214,13 @@ export const SearchTasksInputSchema = z.object({
   type: stringOrArray(TaskTypeSchema).optional(),
   priority: stringOrArray(PrioritySchema).optional(),
   limit: z.number().int().positive().optional(),
+  verbosity: VerbositySchema.optional(),
 });
 
 export const GetTaskGraphInputSchema = z.object({
   task_id: z.string(),
   depth: z.number().int().min(1).max(5).optional(),
+  verbosity: VerbositySchema.optional(),
 });
 
 export const RenderTaskBoardInputSchema = z.object({
@@ -255,6 +262,81 @@ export function formatTasks(tasks: Task[], options: ToolOptions): Array<Omit<Tas
     return tasks.map(({ assignee, ...rest }) => rest);
   }
   return tasks;
+}
+
+// --- Verbosity projection ---
+//
+// Task-reading tools return large payloads when a caller only needs an at-a-glance list.
+// `projectTask` trims the serialized shape based on a verbosity mode:
+//
+//   short    — id, title (truncated), status, type, priority, estimate, assignee, tags
+//              (truncated), due_date. For triage scans.
+//   detailed — all fields, description truncated.
+//   full     — the full Task, no truncation.
+//
+// Local mode still strips the `assignee` field in every mode, matching `formatTask`.
+
+const SHORT_TITLE_MAX = 80;
+const SHORT_TAGS_MAX = 5;
+const DETAILED_DESCRIPTION_MAX = 200;
+
+function truncateString(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
+function shortTitle(title: string): string {
+  const firstLine = title.split("\n", 1)[0];
+  return truncateString(firstLine, SHORT_TITLE_MAX);
+}
+
+function shortTags(tags: string[]): string[] {
+  return tags.slice(0, SHORT_TAGS_MAX);
+}
+
+export type TaskProjection = Record<string, unknown>;
+
+/** Project a task for serialization under the given verbosity mode. */
+export function projectTask(task: Task, verbosity: Verbosity, options: ToolOptions): TaskProjection {
+  if (verbosity === "full") {
+    return formatTask(task, options) as TaskProjection;
+  }
+  if (verbosity === "short") {
+    const out: TaskProjection = {
+      id: task.id,
+      title: shortTitle(task.title),
+      status: task.status,
+      type: task.type,
+      priority: task.priority,
+      estimate: task.estimate,
+      tags: shortTags(task.tags),
+      due_date: task.due_date,
+    };
+    if (options.mode !== "local") {
+      out.assignee = task.assignee;
+    }
+    return out;
+  }
+  // detailed: full shape, description truncated
+  const formatted = formatTask(task, options) as TaskProjection;
+  return {
+    ...formatted,
+    description: truncateString(task.description, DETAILED_DESCRIPTION_MAX),
+  };
+}
+
+/** Project an array of tasks. Preserves an extra `score` field if present (search results). */
+export function projectTasks<T extends Task>(
+  tasks: T[],
+  verbosity: Verbosity,
+  options: ToolOptions,
+): TaskProjection[] {
+  return tasks.map((t) => {
+    const projected = projectTask(t, verbosity, options);
+    if ("score" in t) {
+      return { ...projected, score: (t as T & { score: number }).score };
+    }
+    return projected;
+  });
 }
 
 /** Validate assignee against the config user list (self-hosted only). Throws on invalid. */

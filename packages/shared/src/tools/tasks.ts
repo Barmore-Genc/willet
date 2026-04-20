@@ -11,9 +11,11 @@ import {
   ReopenTaskInputSchema,
   withProjectId,
   formatTask,
-  formatTasks,
+  projectTask,
+  projectTasks,
   validateAssignee,
   type ToolOptions,
+  type Verbosity,
 } from "../models/types.js";
 import {
   getProject,
@@ -83,20 +85,21 @@ export function registerTaskTools(server: McpServer, options: ToolOptions): void
 
   server.tool(
     "get_task",
-    "Get a task by ID with its comments and links. History and subtasks are opt-in.",
+    "Get a task by ID with its comments and links. History and subtasks are opt-in. `verbosity` controls output: 'short', 'detailed', or 'full' (default).",
     withProjectId(GetTaskInputSchema).shape,
-    async ({ project_id, task_id, include_history, include_subtasks }) => {
+    async ({ project_id, task_id, include_history, include_subtasks, verbosity }) => {
       const db = resolveDb(project_id);
       const task = getTaskById(db, task_id);
       if (!task) throw new Error(`Task not found: ${task_id}`);
 
-      const result: Record<string, unknown> = { ...formatTask(task, options) };
+      const v: Verbosity = verbosity ?? "full";
+      const result: Record<string, unknown> = { ...projectTask(task, v, options) };
       result.comments = getComments(db, task_id);
       if (include_history) result.history = getHistory(db, task_id);
       result.links = getLinks(db, task_id);
       if (include_subtasks) {
         const { tasks: subtasks } = listTasks(db, { parent_task_id: task_id });
-        result.subtasks = formatTasks(subtasks, options);
+        result.subtasks = projectTasks(subtasks, v, options);
       }
 
       return {
