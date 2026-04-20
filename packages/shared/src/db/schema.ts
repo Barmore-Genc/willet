@@ -20,6 +20,7 @@ export function applySchema(db: Database.Database): void {
       tags TEXT NOT NULL DEFAULT '[]',
       parent_task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
       assignee TEXT,
+      due_date TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       completed_at TEXT,
@@ -78,6 +79,15 @@ export function applySchema(db: Database.Database): void {
     db.exec("ALTER TABLE tasks ADD COLUMN assignee TEXT");
   }
   db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee)");
+
+  // Migration: add due_date column to existing databases
+  const hasDueDate = db
+    .prepare("SELECT COUNT(*) as cnt FROM pragma_table_info('tasks') WHERE name = 'due_date'")
+    .get() as { cnt: number };
+  if (hasDueDate.cnt === 0) {
+    db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT");
+  }
+  db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)");
 
   // FTS5 virtual table — can't use IF NOT EXISTS, so check first
   const ftsExists = db

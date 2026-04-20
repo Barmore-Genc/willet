@@ -176,6 +176,7 @@ interface TaskRow {
   tags: string;
   parent_task_id: string | null;
   assignee: string | null;
+  due_date: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -239,6 +240,7 @@ export async function createTask(
     tags?: string[];
     parent_task_id?: string;
     assignee?: string;
+    due_date?: string | null;
     metadata?: Record<string, unknown>;
     links?: Array<{ target_task_id: string; link_type: LinkType }>;
     initial_comment?: string;
@@ -251,8 +253,8 @@ export async function createTask(
   const status = input.status ?? "open";
 
   db.prepare(`
-    INSERT INTO tasks (id, title, description, status, type, priority, estimate, tags, parent_task_id, assignee, created_at, updated_at, metadata)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (id, title, description, status, type, priority, estimate, tags, parent_task_id, assignee, due_date, created_at, updated_at, metadata)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     input.title,
@@ -264,6 +266,7 @@ export async function createTask(
     JSON.stringify(tags),
     input.parent_task_id ?? null,
     input.assignee ?? null,
+    input.due_date ?? null,
     now,
     now,
     JSON.stringify(metadata)
@@ -310,6 +313,7 @@ export async function updateTask(
     tags?: string[];
     parent_task_id?: string | null;
     assignee?: string | null;
+    due_date?: string | null;
     metadata?: Record<string, unknown>;
     status?: Status;
     completed_at?: string | null;
@@ -353,6 +357,7 @@ export async function updateTask(
   diffField("completed_at", input.completed_at, current.completed_at);
   diffField("parent_task_id", input.parent_task_id, current.parent_task_id);
   diffField("assignee", input.assignee, current.assignee);
+  diffField("due_date", input.due_date, current.due_date);
   diffField("tags", input.tags, current.tags, (v) => JSON.stringify(v));
   diffField("metadata", input.metadata, current.metadata, (v) => JSON.stringify(v));
 
@@ -536,6 +541,8 @@ export function listTasks(
     created_before?: string;
     completed_after?: string;
     completed_before?: string;
+    due_after?: string;
+    due_before?: string;
     sort?: SortField;
     sort_direction?: SortDirection;
     limit?: number;
@@ -604,12 +611,22 @@ export function listTasks(
     conditions.push("completed_at < ?");
     params.push(filters.completed_before);
   }
+  if (filters.due_after) {
+    conditions.push("due_date > ?");
+    params.push(filters.due_after);
+  }
+  if (filters.due_before) {
+    conditions.push("due_date < ?");
+    params.push(filters.due_before);
+  }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const sort = filters.sort ?? "created_at";
   const dir = filters.sort_direction ?? "desc";
   const limit = filters.limit ?? 50;
   const offset = filters.offset ?? 0;
+  // Tasks without a due date should sort after tasks with one, regardless of direction.
+  const nullsClause = sort === "due_date" ? " NULLS LAST" : "";
 
   const countRow = db
     .prepare(`SELECT COUNT(*) as total FROM tasks ${where}`)
@@ -617,7 +634,7 @@ export function listTasks(
 
   const rows = db
     .prepare(
-      `SELECT * FROM tasks ${where} ORDER BY ${sort} ${dir} LIMIT ? OFFSET ?`
+      `SELECT * FROM tasks ${where} ORDER BY ${sort} ${dir}${nullsClause} LIMIT ? OFFSET ?`
     )
     .all(...params, limit, offset) as TaskRow[];
 
