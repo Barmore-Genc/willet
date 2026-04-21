@@ -14,8 +14,9 @@ import {
   GetProjectStatsInputSchema,
   ListTagsInputSchema,
   withProjectId,
-  formatTasks,
+  projectTasks,
   type ToolOptions,
+  type Verbosity,
 } from "../models/types.js";
 import {
   getProject,
@@ -62,39 +63,42 @@ export function registerQueryTools(server: McpServer, options: ToolOptions): voi
 
   server.tool(
     "list_tasks",
-    "List tasks with structured filtering (status, type, priority, tags, dates, parent). All filters use AND semantics.",
+    "List tasks with structured filtering (status, type, priority, tags, dates, parent). All filters use AND semantics. `verbosity` controls output: 'short' (id/title/status/type/priority/estimate/assignee/tags/due_date), 'detailed' (all fields, description truncated, default), or 'full' (all fields, no truncation).",
     listSchema.shape,
-    async ({ project_id, ...input }) => {
+    async ({ project_id, verbosity, ...input }) => {
       const db = resolveDb(project_id);
       const result = listTasks(db, input);
+      const mode: Verbosity = verbosity ?? "detailed";
       return {
-        content: [{ type: "text", text: JSON.stringify({ ...result, tasks: formatTasks(result.tasks, options) }, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify({ ...result, tasks: projectTasks(result.tasks, mode, options) }, null, 2) }],
       };
     }
   );
 
   server.tool(
     "search_tasks",
-    "Search tasks using text (FTS5), semantic (vector similarity), or hybrid (both with reciprocal rank fusion) mode",
+    "Search tasks using text (FTS5), semantic (vector similarity), or hybrid (both with reciprocal rank fusion) mode. `verbosity` controls output: 'short', 'detailed' (default), or 'full'.",
     withProjectId(SearchTasksInputSchema).shape,
-    async ({ project_id, query, mode, status, type, priority, limit }) => {
+    async ({ project_id, query, mode, status, type, priority, limit, verbosity }) => {
       const db = resolveDb(project_id);
       const results = await searchTasks(db, query, { mode, status, type, priority, limit });
+      const v: Verbosity = verbosity ?? "detailed";
       return {
-        content: [{ type: "text", text: JSON.stringify(formatTasks(results, options), null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(projectTasks(results, v, options), null, 2) }],
       };
     }
   );
 
   server.tool(
     "get_task_graph",
-    "Get a task and all linked tasks up to N hops out, returning nodes and edges",
+    "Get a task and all linked tasks up to N hops out, returning nodes and edges. `verbosity` controls node output: 'short', 'detailed' (default), or 'full'.",
     withProjectId(GetTaskGraphInputSchema).shape,
-    async ({ project_id, task_id, depth }) => {
+    async ({ project_id, task_id, depth, verbosity }) => {
       const db = resolveDb(project_id);
       const graph = getTaskGraph(db, task_id, depth);
+      const v: Verbosity = verbosity ?? "detailed";
       return {
-        content: [{ type: "text", text: JSON.stringify({ ...graph, nodes: formatTasks(graph.nodes, options) }, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify({ ...graph, nodes: projectTasks(graph.nodes, v, options) }, null, 2) }],
       };
     }
   );
