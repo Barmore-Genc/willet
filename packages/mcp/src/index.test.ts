@@ -175,6 +175,75 @@ describe("Willet MCP stdio E2E", () => {
     ).toContain("done");
   });
 
+  it("should reopen an in_progress task back to open", async () => {
+    const projectDir = join(dataDir, "reopen-in-progress-project");
+
+    const initResult = await client.callTool({
+      name: "init_project",
+      arguments: { name: "Reopen In-Progress Project", directory: projectDir },
+    });
+    const projectId = (initResult.content as Array<{ text: string }>)[0]
+      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+    const createResult = await client.callTool({
+      name: "create_task",
+      arguments: { project_id: projectId, title: "In-progress task" },
+    });
+    const taskId = (createResult.content as Array<{ text: string }>)[0]
+      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+    await client.callTool({
+      name: "start_task",
+      arguments: { project_id: projectId, task_id: taskId },
+    });
+
+    const reopenResult = await client.callTool({
+      name: "reopen_task",
+      arguments: { project_id: projectId, task_id: taskId },
+    });
+    const reopenText = (reopenResult.content as Array<{ text: string }>)[0].text;
+    expect(reopenText).toContain('"status": "open"');
+
+    // History should record exactly one status change for this reopen.
+    const getResult = await client.callTool({
+      name: "get_task",
+      arguments: {
+        project_id: projectId,
+        task_id: taskId,
+        include_history: true,
+      },
+    });
+    const getText = (getResult.content as Array<{ text: string }>)[0].text;
+    const parsed = JSON.parse(getText) as {
+      history?: Array<{
+        field_changed: string;
+        old_value: string;
+        new_value: string;
+      }>;
+    };
+    const statusChanges =
+      parsed.history?.filter((h) => h.field_changed === "status") ?? [];
+    expect(statusChanges).toHaveLength(2);
+    expect(statusChanges[0]).toMatchObject({
+      old_value: "open",
+      new_value: "in_progress",
+    });
+    expect(statusChanges[1]).toMatchObject({
+      old_value: "in_progress",
+      new_value: "open",
+    });
+
+    // Reopening an already-open task should error.
+    const dupResult = await client.callTool({
+      name: "reopen_task",
+      arguments: { project_id: projectId, task_id: taskId },
+    });
+    expect(dupResult.isError).toBe(true);
+    expect(
+      (dupResult.content as Array<{ text: string }>)[0].text
+    ).toContain("already open");
+  });
+
   it("should link and unlink tasks", async () => {
     const projectDir = join(dataDir, "link-project");
 

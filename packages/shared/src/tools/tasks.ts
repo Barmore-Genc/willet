@@ -162,7 +162,7 @@ export function registerTaskTools(server: McpServer, options: ToolOptions): void
 
   server.tool(
     "reopen_task",
-    "Reopen a completed or cancelled task",
+    "Move a task back to the open queue. Accepts tasks that are done, cancelled, or in_progress",
     withProjectId(ReopenTaskInputSchema).shape,
     async ({ project_id, task_id }) => {
       const db = resolveDb(project_id);
