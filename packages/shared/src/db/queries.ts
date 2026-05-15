@@ -421,6 +421,9 @@ export async function cancelTask(db: Database.Database, taskId: string): Promise
 export async function reopenTask(db: Database.Database, taskId: string): Promise<Task> {
   const task = getTaskById(db, taskId);
   if (!task) throw new Error(`Task not found: ${taskId}`);
+  if (task.status === "open") {
+    throw new Error("Task is already open");
+  }
   return updateTask(db, { task_id: taskId, status: "open", completed_at: null });
 }
 
