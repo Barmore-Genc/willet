@@ -1,0 +1,66 @@
+name: opencode-review
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+
+jobs:
+  review:
+    # Auto-review when an org member / collaborator opens (or re-opens / marks
+    # ready) a PR. Skip auto-review if the PR description contains
+    # `/no-bot-review`. Manual re-review when an org member / collaborator
+    # posts a `/oc review` or `/opencode review` comment (the explicit comment
+    # trigger overrides `/no-bot-review`).
+    if: |
+      (
+        github.event_name == 'pull_request' &&
+        (
+          github.event.pull_request.author_association == 'OWNER' ||
+          github.event.pull_request.author_association == 'MEMBER' ||
+          github.event.pull_request.author_association == 'COLLABORATOR'
+        ) &&
+        !contains(github.event.pull_request.body, '/no-bot-review')
+      ) ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != null &&
+        (
+          contains(github.event.comment.body, ' /oc review') ||
+          startsWith(github.event.comment.body, '/oc review') ||
+          contains(github.event.comment.body, ' /opencode review') ||
+          startsWith(github.event.comment.body, '/opencode review')
+        ) &&
+        (
+          github.event.comment.author_association == 'OWNER' ||
+          github.event.comment.author_association == 'MEMBER' ||
+          github.event.comment.author_association == 'COLLABORATOR'
+        )
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Set the env var that matches your model's provider (see action README).
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+          persist-credentials: false
+          fetch-depth: 0
+
+      # Comment-triggered runs start on the default branch; switch to PR head
+      # so opencode reads the PR's code.
+      - if: github.event_name == 'issue_comment'
+        run: gh pr checkout "${{ github.event.issue.number }}" --repo "$GITHUB_REPOSITORY"
+
+      - uses: Barmore-Genc/opencode-pr-reviewer@v1
+        with:
+          model: deepseek/deepseek-v4-pro
+          pr-number: ${{ github.event.pull_request.number || github.event.issue.number }}
+          user-comment: ${{ github.event.comment.body }}
