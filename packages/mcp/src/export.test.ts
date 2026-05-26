@@ -7,14 +7,14 @@ import { ulid } from "ulid";
 import StreamZip from "node-stream-zip";
 import { applySchema } from "@willet/shared/dist/db/schema.js";
 import {
-  gatherTaskData,
-  tasksToCSV,
-  tasksToJSON,
+  gatherTicketData,
+  ticketsToCSV,
+  ticketsToJSON,
   exportProject,
-  importTasksIntoDb,
+  importTicketsIntoDb,
   importFromZip,
 } from "@willet/shared";
-import type { ExportTaskJson } from "@willet/shared";
+import type { ExportTicketJson } from "@willet/shared";
 
 function createTestDb(): Database.Database {
   const db = new Database(":memory:");
@@ -22,7 +22,7 @@ function createTestDb(): Database.Database {
   return db;
 }
 
-function insertTask(
+function insertTicket(
   db: Database.Database,
   overrides: Partial<{
     id: string;
@@ -34,7 +34,7 @@ function insertTask(
     estimate: string | null;
     actual: string | null;
     tags: string;
-    parent_task_id: string | null;
+    parent_ticket_id: string | null;
     assignee: string | null;
     created_at: string;
     updated_at: string;
@@ -48,12 +48,12 @@ function insertTask(
     title: "Test task",
     description: "A test task",
     status: "open",
-    type: "task",
+    type: "chore",
     priority: "medium",
     estimate: null,
     actual: null,
     tags: "[]",
-    parent_task_id: null,
+    parent_ticket_id: null,
     assignee: null,
     created_at: now,
     updated_at: now,
@@ -62,7 +62,7 @@ function insertTask(
   };
   const task = { ...defaults, ...overrides };
   db.prepare(
-    `INSERT INTO tasks (id, title, description, status, type, priority, estimate, actual, tags, parent_task_id, assignee, created_at, updated_at, completed_at, metadata)
+    `INSERT INTO tickets (id, title, description, status, type, priority, estimate, actual, tags, parent_ticket_id, assignee, created_at, updated_at, completed_at, metadata)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     task.id,
@@ -74,7 +74,7 @@ function insertTask(
     task.estimate,
     task.actual,
     task.tags,
-    task.parent_task_id,
+    task.parent_ticket_id,
     task.assignee,
     task.created_at,
     task.updated_at,
@@ -86,14 +86,14 @@ function insertTask(
 
 function insertComment(
   db: Database.Database,
-  taskId: string,
+  ticketId: string,
   content: string,
   createdBy = "testuser",
 ) {
   const commentId = ulid();
   db.prepare(
-    `INSERT INTO task_comments (id, task_id, content, created_at, created_by) VALUES (?, ?, ?, ?, ?)`,
-  ).run(commentId, taskId, content, new Date().toISOString(), createdBy);
+    `INSERT INTO ticket_comments (id, ticket_id, content, created_at, created_by) VALUES (?, ?, ?, ?, ?)`,
+  ).run(commentId, ticketId, content, new Date().toISOString(), createdBy);
   return commentId;
 }
 
@@ -105,14 +105,14 @@ function insertLink(
 ) {
   const linkId = ulid();
   db.prepare(
-    `INSERT INTO task_links (id, source_task_id, target_task_id, link_type, created_at) VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO ticket_links (id, source_ticket_id, target_ticket_id, link_type, created_at) VALUES (?, ?, ?, ?, ?)`,
   ).run(linkId, sourceId, targetId, linkType, new Date().toISOString());
   return linkId;
 }
 
 function insertHistory(
   db: Database.Database,
-  taskId: string,
+  ticketId: string,
   field: string,
   oldValue: string | null,
   newValue: string | null,
@@ -120,20 +120,20 @@ function insertHistory(
 ) {
   const histId = ulid();
   db.prepare(
-    `INSERT INTO task_history (id, task_id, field_changed, old_value, new_value, changed_at, changed_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(histId, taskId, field, oldValue, newValue, new Date().toISOString(), changedBy);
+    `INSERT INTO ticket_history (id, ticket_id, field_changed, old_value, new_value, changed_at, changed_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(histId, ticketId, field, oldValue, newValue, new Date().toISOString(), changedBy);
   return histId;
 }
 
-describe("gatherTaskData", () => {
+describe("gatherTicketData", () => {
   it("should gather tasks with comments, links, and history", () => {
     const db = createTestDb();
-    const task1 = insertTask(db, {
+    const task1 = insertTicket(db, {
       id: "01JTASK1AAAAAAAAAAAAAAAA00",
       title: "Task one",
       tags: '["backend","api"]',
     });
-    const task2 = insertTask(db, {
+    const task2 = insertTicket(db, {
       id: "01JTASK2AAAAAAAAAAAAAAAA00",
       title: "Task two",
     });
@@ -143,7 +143,7 @@ describe("gatherTaskData", () => {
     insertLink(db, task1.id, task2.id, "blocks");
     insertHistory(db, task1.id, "status", "open", "in_progress");
 
-    const tasks = gatherTaskData(db);
+    const tasks = gatherTicketData(db);
     expect(tasks).toHaveLength(2);
 
     const t1 = tasks.find((t) => t.id === task1.id)!;
@@ -164,10 +164,10 @@ describe("gatherTaskData", () => {
   });
 });
 
-describe("tasksToCSV", () => {
+describe("ticketsToCSV", () => {
   it("should produce valid CSV with headers and escaped content", () => {
     const db = createTestDb();
-    const task = insertTask(db, {
+    const task = insertTicket(db, {
       id: "01JTASK1AAAAAAAAAAAAAAAA00",
       title: 'Task with "quotes"',
       description: "Line1\nLine2",
@@ -176,12 +176,12 @@ describe("tasksToCSV", () => {
     });
     insertComment(db, task.id, "A comment");
 
-    const tasks = gatherTaskData(db);
-    const csv = tasksToCSV(tasks);
+    const tasks = gatherTicketData(db);
+    const csv = ticketsToCSV(tasks);
 
     const lines = csv.split("\n");
     expect(lines[0]).toBe(
-      "id,title,description,status,type,priority,estimate,actual,tags,assignee,parent_task_id,created_at,updated_at,completed_at,comments",
+      "id,title,description,status,type,priority,estimate,actual,tags,assignee,parent_ticket_id,created_at,updated_at,completed_at,comments",
     );
     // Should contain escaped quotes
     expect(csv).toContain('""quotes""');
@@ -189,34 +189,34 @@ describe("tasksToCSV", () => {
   });
 });
 
-describe("tasksToJSON", () => {
+describe("ticketsToJSON", () => {
   it("should produce correct JSON structure", () => {
     const db = createTestDb();
-    const task = insertTask(db, {
+    const task = insertTicket(db, {
       id: "01JTASK1AAAAAAAAAAAAAAAA00",
       title: "Test task",
       metadata: '{"key":"value"}',
     });
     insertComment(db, task.id, "A comment");
 
-    const tasks = gatherTaskData(db);
-    const json = tasksToJSON(tasks, "test-project");
+    const tasks = gatherTicketData(db);
+    const json = ticketsToJSON(tasks, "test-project");
 
-    expect(json.exportVersion).toBe(1);
+    expect(json.exportVersion).toBe(2);
     expect(json.project).toBe("test-project");
-    expect(json.tasks).toHaveLength(1);
-    expect(json.tasks[0].title).toBe("Test task");
-    expect(json.tasks[0].metadata).toEqual({ key: "value" });
-    expect(json.tasks[0].comments).toHaveLength(1);
-    expect(json.tasks[0].comments[0].content).toBe("A comment");
+    expect(json.tickets).toHaveLength(1);
+    expect(json.tickets[0].title).toBe("Test task");
+    expect(json.tickets[0].metadata).toEqual({ key: "value" });
+    expect(json.tickets[0].comments).toHaveLength(1);
+    expect(json.tickets[0].comments[0].content).toBe("A comment");
     db.close();
   });
 });
 
-describe("importTasksIntoDb", () => {
+describe("importTicketsIntoDb", () => {
   it("should import tasks with all related data", () => {
     const db = createTestDb();
-    const tasks: ExportTaskJson["tasks"] = [
+    const tasks: ExportTicketJson["tickets"] = [
       {
         id: "01JTASK1AAAAAAAAAAAAAAAA00",
         title: "Imported task",
@@ -228,7 +228,7 @@ describe("importTasksIntoDb", () => {
         actual: null,
         tags: ["import", "test"],
         assignee: "alice",
-        parent_task_id: null,
+        parent_ticket_id: null,
         created_at: "2025-01-01T00:00:00.000Z",
         updated_at: "2025-01-02T00:00:00.000Z",
         completed_at: null,
@@ -255,12 +255,12 @@ describe("importTasksIntoDb", () => {
       },
     ];
 
-    const { inserted, warnings } = importTasksIntoDb(db, tasks);
+    const { inserted, warnings } = importTicketsIntoDb(db, tasks);
     expect(inserted).toBe(1);
     expect(warnings).toHaveLength(0);
 
     // Verify task
-    const row = db.prepare("SELECT * FROM tasks WHERE id = ?").get(tasks[0].id) as Record<string, unknown>;
+    const row = db.prepare("SELECT * FROM tickets WHERE id = ?").get(tasks[0].id) as Record<string, unknown>;
     expect(row.title).toBe("Imported task");
     expect(row.status).toBe("in_progress");
     expect(row.type).toBe("bug");
@@ -268,12 +268,12 @@ describe("importTasksIntoDb", () => {
     expect(row.assignee).toBeNull(); // assignee is discarded
 
     // Verify comment
-    const comments = db.prepare("SELECT * FROM task_comments WHERE task_id = ?").all(tasks[0].id) as Array<Record<string, unknown>>;
+    const comments = db.prepare("SELECT * FROM ticket_comments WHERE ticket_id = ?").all(tasks[0].id) as Array<Record<string, unknown>>;
     expect(comments).toHaveLength(1);
     expect(comments[0].content).toBe("A comment");
 
     // Verify history
-    const history = db.prepare("SELECT * FROM task_history WHERE task_id = ?").all(tasks[0].id) as Array<Record<string, unknown>>;
+    const history = db.prepare("SELECT * FROM ticket_history WHERE ticket_id = ?").all(tasks[0].id) as Array<Record<string, unknown>>;
     expect(history).toHaveLength(1);
     expect(history[0].field_changed).toBe("status");
 
@@ -283,19 +283,19 @@ describe("importTasksIntoDb", () => {
   it("should handle parent-child relationships in topological order", () => {
     const db = createTestDb();
     // Put child before parent in array to test topological sorting
-    const tasks: ExportTaskJson["tasks"] = [
+    const tasks: ExportTicketJson["tickets"] = [
       {
         id: "01JCH001AAAAAAAAAAAAAAAA00",
         title: "Child task",
         description: "",
         status: "open",
-        type: "task",
+        type: "chore",
         priority: "medium",
         estimate: null,
         actual: null,
         tags: [],
         assignee: null,
-        parent_task_id: "01JPRNT1AAAAAAAAAAAAAAAA00",
+        parent_ticket_id: "01JPRNT1AAAAAAAAAAAAAAAA00",
         created_at: "2025-01-02T00:00:00.000Z",
         updated_at: "2025-01-02T00:00:00.000Z",
         completed_at: null,
@@ -309,13 +309,13 @@ describe("importTasksIntoDb", () => {
         title: "Parent task",
         description: "",
         status: "open",
-        type: "task",
+        type: "chore",
         priority: "medium",
         estimate: null,
         actual: null,
         tags: [],
         assignee: null,
-        parent_task_id: null,
+        parent_ticket_id: null,
         created_at: "2025-01-01T00:00:00.000Z",
         updated_at: "2025-01-01T00:00:00.000Z",
         completed_at: null,
@@ -326,30 +326,30 @@ describe("importTasksIntoDb", () => {
       },
     ];
 
-    const { inserted } = importTasksIntoDb(db, tasks);
+    const { inserted } = importTicketsIntoDb(db, tasks);
     expect(inserted).toBe(2);
 
-    const child = db.prepare("SELECT * FROM tasks WHERE id = ?").get("01JCH001AAAAAAAAAAAAAAAA00") as Record<string, unknown>;
-    expect(child.parent_task_id).toBe("01JPRNT1AAAAAAAAAAAAAAAA00");
+    const child = db.prepare("SELECT * FROM tickets WHERE id = ?").get("01JCH001AAAAAAAAAAAAAAAA00") as Record<string, unknown>;
+    expect(child.parent_ticket_id).toBe("01JPRNT1AAAAAAAAAAAAAAAA00");
 
     db.close();
   });
 
   it("should handle links between tasks", () => {
     const db = createTestDb();
-    const tasks: ExportTaskJson["tasks"] = [
+    const tasks: ExportTicketJson["tickets"] = [
       {
         id: "01JTASK1AAAAAAAAAAAAAAAA00",
         title: "Source",
         description: "",
         status: "open",
-        type: "task",
+        type: "chore",
         priority: "medium",
         estimate: null,
         actual: null,
         tags: [],
         assignee: null,
-        parent_task_id: null,
+        parent_ticket_id: null,
         created_at: "2025-01-01T00:00:00.000Z",
         updated_at: "2025-01-01T00:00:00.000Z",
         completed_at: null,
@@ -358,8 +358,8 @@ describe("importTasksIntoDb", () => {
         links: [
           {
             id: "01J0NK1AAAAAAAAAAAAAAAA000",
-            source_task_id: "01JTASK1AAAAAAAAAAAAAAAA00",
-            target_task_id: "01JTASK2AAAAAAAAAAAAAAAA00",
+            source_ticket_id: "01JTASK1AAAAAAAAAAAAAAAA00",
+            target_ticket_id: "01JTASK2AAAAAAAAAAAAAAAA00",
             link_type: "blocks",
             created_at: "2025-01-01T00:00:00.000Z",
           },
@@ -371,13 +371,13 @@ describe("importTasksIntoDb", () => {
         title: "Target",
         description: "",
         status: "open",
-        type: "task",
+        type: "chore",
         priority: "medium",
         estimate: null,
         actual: null,
         tags: [],
         assignee: null,
-        parent_task_id: null,
+        parent_ticket_id: null,
         created_at: "2025-01-01T00:00:00.000Z",
         updated_at: "2025-01-01T00:00:00.000Z",
         completed_at: null,
@@ -388,13 +388,13 @@ describe("importTasksIntoDb", () => {
       },
     ];
 
-    const { inserted } = importTasksIntoDb(db, tasks);
+    const { inserted } = importTicketsIntoDb(db, tasks);
     expect(inserted).toBe(2);
 
-    const links = db.prepare("SELECT * FROM task_links").all() as Array<Record<string, unknown>>;
+    const links = db.prepare("SELECT * FROM ticket_links").all() as Array<Record<string, unknown>>;
     expect(links).toHaveLength(1);
-    expect(links[0].source_task_id).toBe("01JTASK1AAAAAAAAAAAAAAAA00");
-    expect(links[0].target_task_id).toBe("01JTASK2AAAAAAAAAAAAAAAA00");
+    expect(links[0].source_ticket_id).toBe("01JTASK1AAAAAAAAAAAAAAAA00");
+    expect(links[0].target_ticket_id).toBe("01JTASK2AAAAAAAAAAAAAAAA00");
     expect(links[0].link_type).toBe("blocks");
 
     db.close();
@@ -402,19 +402,19 @@ describe("importTasksIntoDb", () => {
 
   it("should reject invalid ULIDs", () => {
     const db = createTestDb();
-    const tasks: ExportTaskJson["tasks"] = [
+    const tasks: ExportTicketJson["tickets"] = [
       {
         id: "not-a-ulid",
         title: "Bad task",
         description: "",
         status: "open",
-        type: "task",
+        type: "chore",
         priority: "medium",
         estimate: null,
         actual: null,
         tags: [],
         assignee: null,
-        parent_task_id: null,
+        parent_ticket_id: null,
         created_at: "2025-01-01T00:00:00.000Z",
         updated_at: "2025-01-01T00:00:00.000Z",
         completed_at: null,
@@ -425,7 +425,7 @@ describe("importTasksIntoDb", () => {
       },
     ];
 
-    expect(() => importTasksIntoDb(db, tasks)).toThrow("Invalid task ID");
+    expect(() => importTicketsIntoDb(db, tasks)).toThrow("Invalid ticket ID");
     db.close();
   });
 });
@@ -445,7 +445,7 @@ describe("full export/import round-trip", () => {
     // Create source database with rich data
     const sourceDb = createTestDb();
 
-    const parentTask = insertTask(sourceDb, {
+    const parentTask = insertTicket(sourceDb, {
       id: "01JPRNT1AAAAAAAAAAAAAAAA00",
       title: "Epic: Redesign",
       description: "Full UI redesign project",
@@ -458,22 +458,22 @@ describe("full export/import round-trip", () => {
       metadata: '{"sprint":5}',
     });
 
-    const childTask1 = insertTask(sourceDb, {
+    const childTask1 = insertTicket(sourceDb, {
       id: "01JCHX1AAAAAAAAAAAAAAAA000",
       title: "Design mockups",
       description: "Create mockups in Figma",
       status: "done",
-      type: "task",
+      type: "chore",
       priority: "high",
       estimate: "5",
       actual: "4",
       tags: '["design"]',
-      parent_task_id: parentTask.id,
+      parent_ticket_id: parentTask.id,
       assignee: "bob",
       completed_at: "2025-01-10T00:00:00.000Z",
     });
 
-    const childTask2 = insertTask(sourceDb, {
+    const childTask2 = insertTicket(sourceDb, {
       id: "01JCHX2AAAAAAAAAAAAAAAA000",
       title: "Implement components",
       description: "Build React components",
@@ -481,10 +481,10 @@ describe("full export/import round-trip", () => {
       type: "feature",
       priority: "medium",
       tags: '["frontend","react"]',
-      parent_task_id: parentTask.id,
+      parent_ticket_id: parentTask.id,
     });
 
-    const standaloneTask = insertTask(sourceDb, {
+    const standaloneTask = insertTicket(sourceDb, {
       id: "01JSTNX1AAAAAAAAAAAAAAAA00",
       title: "Fix login bug",
       description: "Users can't login with OAuth",
@@ -511,8 +511,8 @@ describe("full export/import round-trip", () => {
 
     // Export
     const zipPath = join(tmpDir, "export.zip");
-    const { taskCount } = await exportProject(sourceDb, "test-project", zipPath);
-    expect(taskCount).toBe(4);
+    const { ticketCount } = await exportProject(sourceDb, "test-project", zipPath);
+    expect(ticketCount).toBe(4);
     expect(existsSync(zipPath)).toBe(true);
 
     // Verify zip contents
@@ -520,18 +520,18 @@ describe("full export/import round-trip", () => {
     const entries = await zip.entries();
     const entryNames = Object.keys(entries);
     expect(entryNames).toContain("README.txt");
-    expect(entryNames).toContain("tasks-test-project.csv");
-    expect(entryNames).toContain("tasks-test-project.json");
+    expect(entryNames).toContain("tickets-test-project.csv");
+    expect(entryNames).toContain("tickets-test-project.json");
 
     // Read and verify JSON
-    const jsonBuf = await zip.entryData("tasks-test-project.json");
-    const taskJson = JSON.parse(jsonBuf.toString("utf-8")) as ExportTaskJson;
-    expect(taskJson.exportVersion).toBe(1);
+    const jsonBuf = await zip.entryData("tickets-test-project.json");
+    const taskJson = JSON.parse(jsonBuf.toString("utf-8")) as ExportTicketJson;
+    expect(taskJson.exportVersion).toBe(2);
     expect(taskJson.project).toBe("test-project");
-    expect(taskJson.tasks).toHaveLength(4);
+    expect(taskJson.tickets).toHaveLength(4);
 
     // Verify CSV has all tasks
-    const csvBuf = await zip.entryData("tasks-test-project.csv");
+    const csvBuf = await zip.entryData("tickets-test-project.csv");
     const csvLines = csvBuf.toString("utf-8").split("\n");
     // CSV has at least header + 4 tasks; may have more lines due to
     // newlines inside quoted comment fields
@@ -540,12 +540,12 @@ describe("full export/import round-trip", () => {
 
     // Import into a fresh database
     const targetDb = createTestDb();
-    const { inserted, warnings } = importTasksIntoDb(targetDb, taskJson.tasks);
+    const { inserted, warnings } = importTicketsIntoDb(targetDb, taskJson.tickets);
     expect(inserted).toBe(4);
     expect(warnings).toHaveLength(0);
 
     // Verify all tasks were imported
-    const importedTasks = targetDb.prepare("SELECT * FROM tasks ORDER BY created_at").all() as Array<Record<string, unknown>>;
+    const importedTasks = targetDb.prepare("SELECT * FROM tickets ORDER BY created_at").all() as Array<Record<string, unknown>>;
     expect(importedTasks).toHaveLength(4);
 
     // Verify parent task
@@ -562,14 +562,14 @@ describe("full export/import round-trip", () => {
 
     // Verify child with parent reference
     const importedChild1 = importedTasks.find((t) => t.id === childTask1.id)!;
-    expect(importedChild1.parent_task_id).toBe(parentTask.id);
+    expect(importedChild1.parent_ticket_id).toBe(parentTask.id);
     expect(importedChild1.status).toBe("done");
     expect(importedChild1.actual).toBe("4");
     expect(importedChild1.completed_at).toBe("2025-01-10T00:00:00.000Z");
 
     // Verify child2
     const importedChild2 = importedTasks.find((t) => t.id === childTask2.id)!;
-    expect(importedChild2.parent_task_id).toBe(parentTask.id);
+    expect(importedChild2.parent_ticket_id).toBe(parentTask.id);
     expect(importedChild2.type).toBe("feature");
 
     // Verify standalone
@@ -579,27 +579,27 @@ describe("full export/import round-trip", () => {
     expect(importedStandalone.priority).toBe("urgent");
 
     // Verify comments
-    const allComments = targetDb.prepare("SELECT * FROM task_comments ORDER BY created_at").all() as Array<Record<string, unknown>>;
+    const allComments = targetDb.prepare("SELECT * FROM ticket_comments ORDER BY created_at").all() as Array<Record<string, unknown>>;
     expect(allComments).toHaveLength(3);
-    const parentComments = allComments.filter((c) => c.task_id === parentTask.id);
+    const parentComments = allComments.filter((c) => c.ticket_id === parentTask.id);
     expect(parentComments).toHaveLength(2);
     expect(parentComments.map((c) => c.content)).toContain("Kickoff meeting done");
     expect(parentComments.map((c) => c.content)).toContain("Deadline moved to Q2");
 
     // Verify links
-    const allLinks = targetDb.prepare("SELECT * FROM task_links ORDER BY created_at").all() as Array<Record<string, unknown>>;
+    const allLinks = targetDb.prepare("SELECT * FROM ticket_links ORDER BY created_at").all() as Array<Record<string, unknown>>;
     expect(allLinks).toHaveLength(2);
     const blocksLink = allLinks.find((l) => l.link_type === "blocks")!;
-    expect(blocksLink.source_task_id).toBe(childTask1.id);
-    expect(blocksLink.target_task_id).toBe(childTask2.id);
+    expect(blocksLink.source_ticket_id).toBe(childTask1.id);
+    expect(blocksLink.target_ticket_id).toBe(childTask2.id);
     const relatesToLink = allLinks.find((l) => l.link_type === "relates_to")!;
-    expect(relatesToLink.source_task_id).toBe(standaloneTask.id);
-    expect(relatesToLink.target_task_id).toBe(parentTask.id);
+    expect(relatesToLink.source_ticket_id).toBe(standaloneTask.id);
+    expect(relatesToLink.target_ticket_id).toBe(parentTask.id);
 
     // Verify history
-    const allHistory = targetDb.prepare("SELECT * FROM task_history ORDER BY changed_at").all() as Array<Record<string, unknown>>;
+    const allHistory = targetDb.prepare("SELECT * FROM ticket_history ORDER BY changed_at").all() as Array<Record<string, unknown>>;
     expect(allHistory).toHaveLength(4);
-    const parentHistory = allHistory.filter((h) => h.task_id === parentTask.id);
+    const parentHistory = allHistory.filter((h) => h.ticket_id === parentTask.id);
     expect(parentHistory).toHaveLength(1);
     expect(parentHistory[0].field_changed).toBe("status");
     expect(parentHistory[0].old_value).toBe("open");
@@ -613,12 +613,12 @@ describe("full export/import round-trip", () => {
     // Create source database
     const sourceDb = createTestDb();
 
-    insertTask(sourceDb, {
+    insertTicket(sourceDb, {
       id: "01JTASK1AAAAAAAAAAAAAAAA00",
       title: "Task A",
       tags: '["tag1"]',
     });
-    insertTask(sourceDb, {
+    insertTicket(sourceDb, {
       id: "01JTASK2AAAAAAAAAAAAAAAA00",
       title: "Task B",
       priority: "high",
@@ -650,18 +650,18 @@ describe("full export/import round-trip", () => {
     );
 
     expect(results).toHaveLength(1);
-    expect(results[0].taskCount).toBe(2);
+    expect(results[0].ticketCount).toBe(2);
     expect(results[0].projectName).toBe("round-trip-project");
 
     // Verify data
-    const tasks = targetDb.prepare("SELECT * FROM tasks").all() as Array<Record<string, unknown>>;
+    const tasks = targetDb.prepare("SELECT * FROM tickets").all() as Array<Record<string, unknown>>;
     expect(tasks).toHaveLength(2);
 
-    const comments = targetDb.prepare("SELECT * FROM task_comments").all() as Array<Record<string, unknown>>;
+    const comments = targetDb.prepare("SELECT * FROM ticket_comments").all() as Array<Record<string, unknown>>;
     expect(comments).toHaveLength(1);
     expect(comments[0].content).toBe("Comment on A");
 
-    const links = targetDb.prepare("SELECT * FROM task_links").all() as Array<Record<string, unknown>>;
+    const links = targetDb.prepare("SELECT * FROM ticket_links").all() as Array<Record<string, unknown>>;
     expect(links).toHaveLength(1);
     expect(links[0].link_type).toBe("relates_to");
 
@@ -672,8 +672,8 @@ describe("full export/import round-trip", () => {
   it("should handle empty project export/import", async () => {
     const sourceDb = createTestDb();
     const zipPath = join(tmpDir, "empty.zip");
-    const { taskCount } = await exportProject(sourceDb, "empty-project", zipPath);
-    expect(taskCount).toBe(0);
+    const { ticketCount } = await exportProject(sourceDb, "empty-project", zipPath);
+    expect(ticketCount).toBe(0);
 
     const targetDb = createTestDb();
     const results = await importFromZip(
@@ -683,7 +683,7 @@ describe("full export/import round-trip", () => {
     );
 
     expect(results).toHaveLength(1);
-    expect(results[0].taskCount).toBe(0);
+    expect(results[0].ticketCount).toBe(0);
 
     sourceDb.close();
     targetDb.close();
@@ -693,7 +693,7 @@ describe("full export/import round-trip", () => {
     // The cloud export has an "organization" field in the JSON; OSS export
     // doesn't. Import should handle both.
     const sourceDb = createTestDb();
-    insertTask(sourceDb, {
+    insertTicket(sourceDb, {
       id: "01JTASK1AAAAAAAAAAAAAAAA00",
       title: "Cloud task",
     });
@@ -704,7 +704,7 @@ describe("full export/import round-trip", () => {
 
     // Verify there's no "organization" field in OSS export
     const zip = new StreamZip.async({ file: zipPath });
-    const buf = await zip.entryData("tasks-cloud-project.json");
+    const buf = await zip.entryData("tickets-cloud-project.json");
     const json = JSON.parse(buf.toString("utf-8"));
     // OSS export should not have organization field
     expect(json).not.toHaveProperty("organization");
@@ -717,7 +717,7 @@ describe("full export/import round-trip", () => {
       () => targetDb,
       (name) => ({ id: "01JC00XXXXXAAAAAAAAAAAAA00", name }),
     );
-    expect(results[0].taskCount).toBe(1);
+    expect(results[0].ticketCount).toBe(1);
 
     sourceDb.close();
     targetDb.close();
@@ -732,7 +732,7 @@ describe("full export/import round-trip", () => {
     ];
 
     for (const id of originalIds) {
-      insertTask(sourceDb, { id, title: `Task ${id}` });
+      insertTicket(sourceDb, { id, title: `Task ${id}` });
     }
 
     const zipPath = join(tmpDir, "ids.zip");
@@ -746,7 +746,7 @@ describe("full export/import round-trip", () => {
     );
 
     const importedIds = (
-      targetDb.prepare("SELECT id FROM tasks ORDER BY id").all() as Array<{ id: string }>
+      targetDb.prepare("SELECT id FROM tickets ORDER BY id").all() as Array<{ id: string }>
     ).map((r) => r.id);
     expect(importedIds.sort()).toEqual(originalIds.sort());
 

@@ -1,14 +1,14 @@
 # Willet
 
-A task tracker built for AI agents, operated entirely through [MCP](https://modelcontextprotocol.io/) tools — no browser, no GUI, just your AI assistant managing tasks alongside your code.
+A ticket tracker built for AI agents, operated entirely through [MCP](https://modelcontextprotocol.io/) tools — no browser, no GUI, just your AI assistant managing tickets alongside your code.
 
-Willet gives AI coding agents (like Claude Code) full project-management capabilities: creating and tracking tasks, managing workflows, linking dependencies, and searching across everything — all without leaving the terminal.
+Willet gives AI coding agents (like Claude Code) full project-management capabilities: creating and tracking tickets, managing workflows, linking dependencies, and searching across everything — all without leaving the terminal.
 
 ## Features
 
-- **Full task lifecycle** — Create, update, and organize tasks with types (task, bug, feature, epic), priorities (low through critical), time estimates, tags, and custom metadata. Move tasks through statuses — every change is recorded with what changed, the old and new values, when, and by whom.
-- **Subtasks and linking** — Break work into subtasks, link related tasks with dependency (blocks), relationship, or duplicate links, and explore connections across multiple hops with the dependency graph.
-- **Semantic search** — Willet runs a local embedding model ([all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)) to generate vector embeddings of your tasks. This means search isn't limited to exact keyword matches — it understands meaning. Search for "authentication problems" and find a task titled "login timeout bug." Combine semantic and keyword search in hybrid mode for the best of both worlds.
+- **Full ticket lifecycle** — Create, update, and organize tickets with types (chore, bug, feature, epic), priorities (low through critical), time estimates, tags, and custom metadata. Move tickets through statuses — every change is recorded with what changed, the old and new values, when, and by whom.
+- **Subtickets and linking** — Break work into subtickets, link related tickets with dependency (blocks), relationship, or duplicate links, and explore connections across multiple hops with the dependency graph.
+- **Semantic search** — Willet runs a local embedding model ([all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)) to generate vector embeddings of your tickets. This means search isn't limited to exact keyword matches — it understands meaning. Search for "authentication problems" and find a ticket titled "login timeout bug." Combine semantic and keyword search in hybrid mode for the best of both worlds.
 - **Visualizations** — Kanban boards, force-directed dependency graphs, and project dashboards rendered as interactive UIs in supported MCP clients, with text fallbacks everywhere else.
 - **Per-project isolation** — Each project gets its own SQLite database. No cross-project interference, easy to back up or move.
 - **Export and import** — Full data portability. Export a project to a ZIP archive and import it elsewhere, including between local and self-hosted instances.
@@ -21,7 +21,7 @@ Willet can run locally on your machine or as a self-hosted server for your team.
 |---|---|---|
 | **Users** | Single user | Multi-user with per-user auth |
 | **Install** | `npm install` | Docker |
-| **Best for** | Personal use with Claude Code | Teams sharing a task server |
+| **Best for** | Personal use with Claude Code | Teams sharing a ticket server |
 
 ## Local Installation
 
@@ -69,9 +69,9 @@ Then just start using it through your AI agent:
 
 > "Create a bug for the login timeout issue, high priority"
 
-> "Show me all open tasks tagged 'backend'"
+> "Show me all open tickets tagged 'backend'"
 
-> "What tasks are blocking the auth epic?"
+> "What tickets are blocking the auth epic?"
 
 > "Search for anything related to authentication problems"
 
@@ -80,7 +80,7 @@ Then just start using it through your AI agent:
 All data stays on your machine:
 
 - **Registry**: `~/.willet/registry.db` — maps working directories to projects
-- **Project data**: `~/.willet/projects/<id>/tasks.db` — one SQLite database per project
+- **Project data**: `~/.willet/projects/<id>/tickets.db` — one SQLite database per project
 - **Embedding model**: `~/.willet/models/` — cached ONNX model
 
 ## Self-Hosted Installation
@@ -152,7 +152,7 @@ When a user connects for the first time, their MCP client will open a page askin
 
 Willet supports exporting and importing projects as ZIP archives. This is useful for backups, migrating between machines, or moving data between local and self-hosted instances.
 
-Exports include all task data: tasks, comments, links, full change history, and metadata.
+Exports include all ticket data: tickets, comments, links, full change history, and metadata.
 
 ### Local (CLI)
 

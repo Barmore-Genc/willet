@@ -4,7 +4,7 @@ const GETTING_STARTED_GUIDE = `# Getting Started with Willet
 
 ## Projects
 
-Willet organizes tasks into projects. Each project is tied to a working directory on your filesystem.
+Willet organizes tickets into projects. Each project is tied to a working directory on your filesystem.
 
 - **Create a project**: Use \`init_project\` with a name. It registers the current working directory as the project root and creates a SQLite database under ~/.willet/projects/.
 - **Find an existing project**: Use \`get_project\` to look up the project for the current working directory, or pass an optional \`project_id\` to find a specific project.
@@ -13,34 +13,34 @@ Willet organizes tasks into projects. Each project is tied to a working director
 ## Basic Workflow
 
 1. **Initialize**: \`init_project\` for a new codebase, or \`get_project\` to find an existing one.
-2. **Create tasks**: \`create_task\` with a title, optional description, priority, tags, and due date.
-3. **Track progress**: Move tasks through statuses with \`start_task\`, \`complete_task\`, \`cancel_task\`, or \`reopen_task\`. Or use \`update_task\` for finer control.
-4. **Organize**: Use \`link_tasks\` to create relationships (blocks, relates_to, duplicates) between tasks. Use \`parent_task_id\` when creating or updating tasks for parent/child hierarchies. Add tags for categorization.
-5. **Comment**: Use \`add_comment\` to leave notes on tasks.
+2. **Create tickets**: \`create_ticket\` with a title, optional description, priority, tags, and due date.
+3. **Track progress**: Move tickets through statuses with \`start_ticket\`, \`complete_ticket\`, \`cancel_ticket\`, or \`reopen_ticket\`. Or use \`update_ticket\` for finer control.
+4. **Organize**: Use \`link_tickets\` to create relationships (blocks, relates_to, duplicates) between tickets. Use \`parent_ticket_id\` when creating or updating tickets for parent/child hierarchies. Add tags for categorization.
+5. **Comment**: Use \`add_comment\` to leave notes on tickets.
 
-## Searching Tasks
+## Searching Tickets
 
 Willet supports three search modes:
 
-- **Text search**: Full-text search over task titles and descriptions. Fast and good for exact keyword matches.
-- **Semantic search**: Vector similarity search using embeddings. Finds conceptually related tasks even when wording differs.
+- **Text search**: Full-text search over ticket titles and descriptions. Fast and good for exact keyword matches.
+- **Semantic search**: Vector similarity search using embeddings. Finds conceptually related tickets even when wording differs.
 - **Hybrid search**: Combines both text and semantic results for the best coverage.
 
-Use \`search_tasks\` with the \`mode\` parameter to pick a strategy.
+Use \`search_tickets\` with the \`mode\` parameter to pick a strategy.
 
 ## Visualization
 
-- **render_task_board**: Kanban-style board grouped by status.
-- **render_dependency_graph**: Visual graph of task relationships and blockers.
-- **get_project_stats**: Summary statistics (counts by status, priority, overdue tasks, etc.).
+- **render_ticket_board**: Kanban-style board grouped by status.
+- **render_dependency_graph**: Visual graph of ticket relationships and blockers.
+- **get_project_stats**: Summary statistics (counts by status, priority, overdue tickets, etc.).
 
 ## Tips
 
-- Use \`list_tasks\` with status, priority, or tag filters before resorting to search — it's faster when you know what you're looking for.
+- Use \`list_tickets\` with status, priority, or tag filters before resorting to search — it's faster when you know what you're looking for.
 - Tags are freeform strings. Use them for categories, sprints, components, or whatever fits your workflow.
-- Link related tasks early. The dependency graph becomes more useful as you add more relationships.
-- \`get_task\` retrieves a single task with optional comments, history, and subtask details.
-- \`get_task_graph\` returns the raw dependency data for a task and its neighbors, useful for understanding blockers.
+- Link related tickets early. The dependency graph becomes more useful as you add more relationships.
+- \`get_ticket\` retrieves a single ticket with optional comments, history, and subticket details.
+- \`get_ticket_graph\` returns the raw dependency data for a ticket and its neighbors, useful for understanding blockers.
 `;
 
 const CONFIGURATION_GUIDE = `# Willet Self-Hosted Configuration
@@ -78,7 +78,7 @@ To add a user, add a new \`[users.<name>]\` section to the config file. To remov
 
 ## Data Storage
 
-Task databases are stored under \`~/.willet/projects/\` by default. Set the \`WILLET_DATA_DIR\` environment variable to change the location.
+Ticket databases are stored under \`~/.willet/projects/\` by default. Set the \`WILLET_DATA_DIR\` environment variable to change the location.
 
 ## Docker Deployment
 
@@ -106,10 +106,10 @@ Run Willet as an HTTP server that multiple users can connect to.
 
 - **Multi-user support**: Each person authenticates with their own credentials. All changes are attributed to the user who made them.
 - **Remote access**: Connect from any machine, not just the one running the server.
-- **Cross-device sync**: Access your tasks from different computers by pointing them at the same server.
+- **Cross-device sync**: Access your tickets from different computers by pointing them at the same server.
 - **Docker deployment**: Ship as a container with a simple TOML config file.
 
-Good for: teams sharing task boards, or solo developers who want to access tasks from multiple machines.
+Good for: teams sharing ticket boards, or solo developers who want to access tickets from multiple machines.
 
 Setup: See the \`@willet/server\` package on GitHub for instructions.
 
@@ -155,16 +155,16 @@ Learn more at https://willetcloud.com
 export function buildInstructions(mode: "local" | "selfhosted"): string {
   const tools = [
     "project management (init_project, get_project, list_projects)",
-    "task CRUD (create_task, update_task, get_task, delete_task, start_task, complete_task, cancel_task, reopen_task)",
-    "comments and links (add_comment, link_tasks, unlink_tasks)",
-    "querying (list_tasks, search_tasks, get_task_graph, list_tags)",
-    "visualization (render_task_board, render_dependency_graph, get_project_stats)",
+    "ticket CRUD (create_ticket, update_ticket, get_ticket, delete_ticket, start_ticket, complete_ticket, cancel_ticket, reopen_ticket)",
+    "comments and links (add_comment, link_tickets, unlink_tickets)",
+    "querying (list_tickets, search_tickets, get_ticket_graph, list_tags)",
+    "visualization (render_ticket_board, render_dependency_graph, get_project_stats)",
   ].join(", ");
 
   if (mode === "selfhosted") {
     return (
-      `Willet is a self-hosted multi-user task management server. ` +
-      `You can create, update, search, and organize tasks across projects. ` +
+      `Willet is a self-hosted multi-user ticket tracking server. ` +
+      `You can create, update, search, and organize tickets across projects. ` +
       `Users authenticate via OAuth with a secret key configured in willet.toml. Each user's actions are tracked with their username.\n\n` +
       `Projects are tied to working directories — call init_project to set up a new project, or get_project to find the current one.\n\n` +
       `Available tool categories: ${tools}.\n\n` +
@@ -176,8 +176,8 @@ export function buildInstructions(mode: "local" | "selfhosted"): string {
   }
 
   return (
-    `Willet is a local-first task management MCP server. ` +
-    `You can create, update, search, and organize tasks across projects.\n\n` +
+    `Willet is a local-first ticket tracking MCP server. ` +
+    `You can create, update, search, and organize tickets across projects.\n\n` +
     `Projects are tied to working directories — call init_project to set up a new project, or get_project to find the current one.\n\n` +
     `Available tool categories: ${tools}.\n\n` +
     `Search supports text search (full-text), semantic search (vector similarity), and hybrid mode.\n\n` +
@@ -195,7 +195,7 @@ export function registerResources(
     "willet://guide/getting-started",
     {
       description:
-        "Guide to getting started with Willet: projects, tasks, search, and visualization",
+        "Guide to getting started with Willet: projects, tickets, search, and visualization",
       mimeType: "text/markdown",
     },
     async () => ({

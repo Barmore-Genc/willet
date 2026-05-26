@@ -406,12 +406,12 @@ describe("Willet HTTP Server E2E", () => {
       const toolNames = body.result.tools.map((t) => t.name);
 
       expect(toolNames).toContain("init_project");
-      expect(toolNames).toContain("create_task");
-      expect(toolNames).toContain("list_tasks");
-      expect(toolNames).toContain("search_tasks");
+      expect(toolNames).toContain("create_ticket");
+      expect(toolNames).toContain("list_tickets");
+      expect(toolNames).toContain("search_tickets");
     });
 
-    it("should create a project and tasks via MCP tools", async () => {
+    it("should create a project and tickets via MCP tools", async () => {
       const { accessToken } = await performOAuthFlow(
         baseUrl,
         TEST_SECRET_ALICE
@@ -432,9 +432,9 @@ describe("Willet HTTP Server E2E", () => {
       expect(projectIdMatch).toBeTruthy();
       const projectId = projectIdMatch![0];
 
-      // Create a task
-      const createTaskRes = (await mcpPost(
-        mcpToolCall(3, "create_task", {
+      // Create a ticket
+      const createTicketRes = (await mcpPost(
+        mcpToolCall(3, "create_ticket", {
           project_id: projectId,
           title: "Fix the widget",
           description: "The widget is broken and needs fixing",
@@ -442,44 +442,44 @@ describe("Willet HTTP Server E2E", () => {
           assignee: "alice",
         })
       )) as { result?: { content: Array<{ text: string }> } };
-      expect(createTaskRes.result).toBeTruthy();
-      const taskText = createTaskRes.result!.content[0].text;
-      const taskIdMatch = taskText.match(/[0-9A-HJKMNP-TV-Z]{26}/);
-      expect(taskIdMatch).toBeTruthy();
-      const taskId = taskIdMatch![0];
+      expect(createTicketRes.result).toBeTruthy();
+      const ticketText = createTicketRes.result!.content[0].text;
+      const ticketIdMatch = ticketText.match(/[0-9A-HJKMNP-TV-Z]{26}/);
+      expect(ticketIdMatch).toBeTruthy();
+      const ticketId = ticketIdMatch![0];
 
-      // List tasks
+      // List tickets
       const listRes = (await mcpPost(
-        mcpToolCall(4, "list_tasks", { project_id: projectId })
+        mcpToolCall(4, "list_tickets", { project_id: projectId })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(listRes.result).toBeTruthy();
       expect(listRes.result!.content[0].text).toContain("Fix the widget");
 
-      // Get task
+      // Get ticket
       const getRes = (await mcpPost(
-        mcpToolCall(5, "get_task", {
+        mcpToolCall(5, "get_ticket", {
           project_id: projectId,
-          task_id: taskId,
+          ticket_id: ticketId,
         })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(getRes.result).toBeTruthy();
       expect(getRes.result!.content[0].text).toContain("Fix the widget");
       expect(getRes.result!.content[0].text).toContain("high");
 
-      // Complete task
+      // Complete ticket
       const completeRes = (await mcpPost(
-        mcpToolCall(6, "complete_task", {
+        mcpToolCall(6, "complete_ticket", {
           project_id: projectId,
-          task_id: taskId,
+          ticket_id: ticketId,
         })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(completeRes.result).toBeTruthy();
 
       // Verify it's completed
       const getRes2 = (await mcpPost(
-        mcpToolCall(7, "get_task", {
+        mcpToolCall(7, "get_ticket", {
           project_id: projectId,
-          task_id: taskId,
+          ticket_id: ticketId,
         })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(getRes2.result!.content[0].text).toContain("done");
@@ -605,7 +605,7 @@ describe("Willet HTTP Server E2E", () => {
       return initRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
     }
 
-    it("should expose assignee in tool schemas and require it for create_task", async () => {
+    it("should expose assignee in tool schemas and require it for create_ticket", async () => {
       const body = (await mcpPost(mcpListTools(id()))) as {
         result: {
           tools: Array<{
@@ -614,24 +614,24 @@ describe("Willet HTTP Server E2E", () => {
           }>;
         };
       };
-      const createTool = body.result.tools.find((t) => t.name === "create_task")!;
-      const updateTool = body.result.tools.find((t) => t.name === "update_task")!;
-      const listTool = body.result.tools.find((t) => t.name === "list_tasks")!;
+      const createTool = body.result.tools.find((t) => t.name === "create_ticket")!;
+      const updateTool = body.result.tools.find((t) => t.name === "update_ticket")!;
+      const listTool = body.result.tools.find((t) => t.name === "list_tickets")!;
 
       // All three should have assignee in their schemas
       expect(createTool.inputSchema.properties).toHaveProperty("assignee");
       expect(updateTool.inputSchema.properties).toHaveProperty("assignee");
       expect(listTool.inputSchema.properties).toHaveProperty("assignee");
 
-      // create_task should require assignee
+      // create_ticket should require assignee
       expect(createTool.inputSchema.required).toContain("assignee");
     });
 
-    it("should reject create_task without assignee", async () => {
+    it("should reject create_ticket without assignee", async () => {
       const projectId = await setupProject("Require Assignee", "require-assignee");
 
       const res = (await mcpPost(
-        mcpToolCall(id(), "create_task", {
+        mcpToolCall(id(), "create_ticket", {
           project_id: projectId,
           title: "No assignee",
         })
@@ -640,11 +640,11 @@ describe("Willet HTTP Server E2E", () => {
       expect(text).toMatch(/error|isError|required/i);
     });
 
-    it("should reject invalid assignee on create_task", async () => {
+    it("should reject invalid assignee on create_ticket", async () => {
       const projectId = await setupProject("Invalid Assignee Create", "invalid-assignee-create");
 
       const res = (await mcpPost(
-        mcpToolCall(id(), "create_task", {
+        mcpToolCall(id(), "create_ticket", {
           project_id: projectId,
           title: "Bad assignee",
           assignee: "nonexistent-user",
@@ -656,24 +656,24 @@ describe("Willet HTTP Server E2E", () => {
       expect(res.result!.content[0].text).toContain("bob");
     });
 
-    it("should reject invalid assignee on update_task", async () => {
+    it("should reject invalid assignee on update_ticket", async () => {
       const projectId = await setupProject("Invalid Assignee Update", "invalid-assignee-update");
 
-      // Create a valid task first
+      // Create a valid ticket first
       const createRes = (await mcpPost(
-        mcpToolCall(id(), "create_task", {
+        mcpToolCall(id(), "create_ticket", {
           project_id: projectId,
-          title: "Valid task",
+          title: "Valid ticket",
           assignee: "alice",
         })
       )) as { result?: { content: Array<{ text: string }> } };
-      const taskId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+      const ticketId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
 
       // Try updating to invalid assignee
       const updateRes = (await mcpPost(
-        mcpToolCall(id(), "update_task", {
+        mcpToolCall(id(), "update_ticket", {
           project_id: projectId,
-          task_id: taskId,
+          ticket_id: ticketId,
           assignee: "nonexistent-user",
         })
       )) as { result?: { content: Array<{ text: string }>; isError?: boolean } };
@@ -684,27 +684,27 @@ describe("Willet HTTP Server E2E", () => {
     it("should include assignee in create, get, and list outputs", async () => {
       const projectId = await setupProject("Assignee Output", "assignee-output");
 
-      // create_task
+      // create_ticket
       const createRes = (await mcpPost(
-        mcpToolCall(id(), "create_task", {
+        mcpToolCall(id(), "create_ticket", {
           project_id: projectId,
-          title: "Alice's task",
+          title: "Alice's ticket",
           assignee: "alice",
         })
       )) as { result?: { content: Array<{ text: string }> } };
       const createText = createRes.result!.content[0].text;
       expect(createText).toContain('"assignee": "alice"');
-      const taskId = createText.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+      const ticketId = createText.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
 
-      // get_task
+      // get_ticket
       const getRes = (await mcpPost(
-        mcpToolCall(id(), "get_task", { project_id: projectId, task_id: taskId })
+        mcpToolCall(id(), "get_ticket", { project_id: projectId, ticket_id: ticketId })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(getRes.result!.content[0].text).toContain('"assignee": "alice"');
 
-      // list_tasks
+      // list_tickets
       const listRes = (await mcpPost(
-        mcpToolCall(id(), "list_tasks", { project_id: projectId })
+        mcpToolCall(id(), "list_tickets", { project_id: projectId })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(listRes.result!.content[0].text).toContain('"assignee": "alice"');
     });
@@ -712,93 +712,93 @@ describe("Willet HTTP Server E2E", () => {
     it("should update assignee and reflect the change", async () => {
       const projectId = await setupProject("Reassign Project", "reassign-project");
 
-      // Create task assigned to alice
+      // Create ticket assigned to alice
       const createRes = (await mcpPost(
-        mcpToolCall(id(), "create_task", {
+        mcpToolCall(id(), "create_ticket", {
           project_id: projectId,
-          title: "Reassignable task",
+          title: "Reassignable ticket",
           assignee: "alice",
         })
       )) as { result?: { content: Array<{ text: string }> } };
-      const taskId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+      const ticketId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
 
       // Reassign to bob
       const updateRes = (await mcpPost(
-        mcpToolCall(id(), "update_task", {
+        mcpToolCall(id(), "update_ticket", {
           project_id: projectId,
-          task_id: taskId,
+          ticket_id: ticketId,
           assignee: "bob",
         })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(updateRes.result!.content[0].text).toContain('"assignee": "bob"');
 
-      // Verify via get_task
+      // Verify via get_ticket
       const getRes = (await mcpPost(
-        mcpToolCall(id(), "get_task", { project_id: projectId, task_id: taskId })
+        mcpToolCall(id(), "get_ticket", { project_id: projectId, ticket_id: ticketId })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(getRes.result!.content[0].text).toContain('"assignee": "bob"');
 
       // Clear assignee
       const clearRes = (await mcpPost(
-        mcpToolCall(id(), "update_task", {
+        mcpToolCall(id(), "update_ticket", {
           project_id: projectId,
-          task_id: taskId,
+          ticket_id: ticketId,
           assignee: null,
         })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(clearRes.result!.content[0].text).toContain('"assignee": null');
     });
 
-    it("should filter tasks by assignee", async () => {
+    it("should filter tickets by assignee", async () => {
       const projectId = await setupProject("Filter Project", "assignee-filter");
 
-      // Create tasks with different assignees
-      await mcpPost(mcpToolCall(id(), "create_task", {
-        project_id: projectId, title: "Alice's task", assignee: "alice",
+      // Create tickets with different assignees
+      await mcpPost(mcpToolCall(id(), "create_ticket", {
+        project_id: projectId, title: "Alice's ticket", assignee: "alice",
       }));
-      await mcpPost(mcpToolCall(id(), "create_task", {
-        project_id: projectId, title: "Bob's task", assignee: "bob",
+      await mcpPost(mcpToolCall(id(), "create_ticket", {
+        project_id: projectId, title: "Bob's ticket", assignee: "bob",
       }));
 
       // Filter for alice
       const aliceRes = (await mcpPost(
-        mcpToolCall(id(), "list_tasks", { project_id: projectId, assignee: "alice" })
+        mcpToolCall(id(), "list_tickets", { project_id: projectId, assignee: "alice" })
       )) as { result?: { content: Array<{ text: string }> } };
       const aliceText = aliceRes.result!.content[0].text;
-      expect(aliceText).toContain("Alice's task");
-      expect(aliceText).not.toContain("Bob's task");
+      expect(aliceText).toContain("Alice's ticket");
+      expect(aliceText).not.toContain("Bob's ticket");
 
       // Filter for bob
       const bobRes = (await mcpPost(
-        mcpToolCall(id(), "list_tasks", { project_id: projectId, assignee: "bob" })
+        mcpToolCall(id(), "list_tickets", { project_id: projectId, assignee: "bob" })
       )) as { result?: { content: Array<{ text: string }> } };
       const bobText = bobRes.result!.content[0].text;
-      expect(bobText).toContain("Bob's task");
-      expect(bobText).not.toContain("Alice's task");
+      expect(bobText).toContain("Bob's ticket");
+      expect(bobText).not.toContain("Alice's ticket");
     });
 
-    it("should filter for unassigned tasks", async () => {
+    it("should filter for unassigned tickets", async () => {
       const projectId = await setupProject("Unassigned Filter", "unassigned-filter");
 
-      // Create assigned task, then clear its assignee to make it unassigned
+      // Create assigned ticket, then clear its assignee to make it unassigned
       const createRes = (await mcpPost(
-        mcpToolCall(id(), "create_task", {
+        mcpToolCall(id(), "create_ticket", {
           project_id: projectId, title: "Was assigned", assignee: "alice",
         })
       )) as { result?: { content: Array<{ text: string }> } };
-      const taskId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
-      await mcpPost(mcpToolCall(id(), "update_task", {
-        project_id: projectId, task_id: taskId, assignee: null,
+      const ticketId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+      await mcpPost(mcpToolCall(id(), "update_ticket", {
+        project_id: projectId, ticket_id: ticketId, assignee: null,
       }));
 
-      // Create another assigned task
-      await mcpPost(mcpToolCall(id(), "create_task", {
+      // Create another assigned ticket
+      await mcpPost(mcpToolCall(id(), "create_ticket", {
         project_id: projectId, title: "Still assigned", assignee: "bob",
       }));
 
       // Filter for unassigned (assignee: null)
       const unassignedRes = (await mcpPost(
-        mcpToolCall(id(), "list_tasks", { project_id: projectId, assignee: null })
+        mcpToolCall(id(), "list_tickets", { project_id: projectId, assignee: null })
       )) as { result?: { content: Array<{ text: string }> } };
       const text = unassignedRes.result!.content[0].text;
       expect(text).toContain("Was assigned");
@@ -809,33 +809,33 @@ describe("Willet HTTP Server E2E", () => {
       const projectId = await setupProject("Lifecycle Assignee", "lifecycle-assignee");
 
       const createRes = (await mcpPost(
-        mcpToolCall(id(), "create_task", {
-          project_id: projectId, title: "Lifecycle task", assignee: "alice",
+        mcpToolCall(id(), "create_ticket", {
+          project_id: projectId, title: "Lifecycle ticket", assignee: "alice",
         })
       )) as { result?: { content: Array<{ text: string }> } };
-      const taskId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+      const ticketId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
 
-      // start_task
+      // start_ticket
       const startRes = (await mcpPost(
-        mcpToolCall(id(), "start_task", { project_id: projectId, task_id: taskId })
+        mcpToolCall(id(), "start_ticket", { project_id: projectId, ticket_id: ticketId })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(startRes.result!.content[0].text).toContain('"assignee": "alice"');
 
-      // complete_task
+      // complete_ticket
       const completeRes = (await mcpPost(
-        mcpToolCall(id(), "complete_task", { project_id: projectId, task_id: taskId })
+        mcpToolCall(id(), "complete_ticket", { project_id: projectId, ticket_id: ticketId })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(completeRes.result!.content[0].text).toContain('"assignee": "alice"');
 
-      // reopen_task
+      // reopen_ticket
       const reopenRes = (await mcpPost(
-        mcpToolCall(id(), "reopen_task", { project_id: projectId, task_id: taskId })
+        mcpToolCall(id(), "reopen_ticket", { project_id: projectId, ticket_id: ticketId })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(reopenRes.result!.content[0].text).toContain('"assignee": "alice"');
 
-      // cancel_task
+      // cancel_ticket
       const cancelRes = (await mcpPost(
-        mcpToolCall(id(), "cancel_task", { project_id: projectId, task_id: taskId })
+        mcpToolCall(id(), "cancel_ticket", { project_id: projectId, ticket_id: ticketId })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(cancelRes.result!.content[0].text).toContain('"assignee": "alice"');
     });

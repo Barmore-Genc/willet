@@ -23,7 +23,7 @@ Options:
 function printImportUsage(): void {
   console.log(`Usage: willet-import <file.zip> [options]
 
-Import tasks from a Willet export archive.
+Import tickets from a Willet export archive.
 
 Options:
   --project <id>    Import into an existing project (creates new project if omitted)
@@ -89,13 +89,13 @@ export async function runExportCli(args: string[]): Promise<void> {
     console.log(`Exporting project "${project.name}" (${project.id})...`);
 
     const projectDb = getProjectDb(project.id);
-    const { taskCount } = await exportProject(
+    const { ticketCount } = await exportProject(
       projectDb,
       project.name,
       resolvedOutput,
     );
 
-    console.log(`Exported ${taskCount} task(s) to ${resolvedOutput}`);
+    console.log(`Exported ${ticketCount} ticket(s) to ${resolvedOutput}`);
   } finally {
     closeAll();
   }
@@ -136,15 +136,15 @@ export async function runImportCli(args: string[]): Promise<void> {
 
     for (const result of results) {
       console.log(
-        `  Project "${result.projectName}" (${result.projectId}): ${result.taskCount} task(s) imported`,
+        `  Project "${result.projectName}" (${result.projectId}): ${result.ticketCount} ticket(s) imported`,
       );
       for (const warning of result.warnings) {
         console.warn(`  Warning: ${warning}`);
       }
     }
 
-    const total = results.reduce((sum, r) => sum + r.taskCount, 0);
-    console.log(`Import complete: ${total} task(s) across ${results.length} project(s).`);
+    const total = results.reduce((sum, r) => sum + r.ticketCount, 0);
+    console.log(`Import complete: ${total} ticket(s) across ${results.length} project(s).`);
   } finally {
     closeAll();
   }

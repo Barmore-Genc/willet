@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { initEmbeddings } from "./embeddings/local.js";
 import { closeAll } from "./db/queries.js";
 import { registerProjectTools } from "./tools/projects.js";
-import { registerTaskTools } from "./tools/tasks.js";
+import { registerTicketTools } from "./tools/tickets.js";
 import { registerLinkTools } from "./tools/links.js";
 import { registerQueryTools } from "./tools/queries.js";
 import { registerVizTools } from "./tools/viz.js";
@@ -14,14 +14,14 @@ export { closeAll } from "./db/queries.js";
 export { getCurrentUser, runAsUser } from "./context.js";
 export type { ToolOptions } from "./models/types.js";
 export {
-  gatherTaskData,
-  tasksToCSV,
-  tasksToJSON,
+  gatherTicketData,
+  ticketsToCSV,
+  ticketsToJSON,
   exportProject,
-  importTasksIntoDb,
+  importTicketsIntoDb,
   importFromZip,
 } from "./export.js";
-export type { TaskWithExtras, ExportTaskJson, ImportResult } from "./export.js";
+export type { TicketWithExtras, ExportTicketJson, ImportResult } from "./export.js";
 export { runExportCli, runImportCli } from "./export-cli.js";
 
 export async function createServer(options?: { embeddingModel?: string; mode?: "local" | "selfhosted"; validAssignees?: string[] }): Promise<McpServer> {
@@ -38,7 +38,7 @@ export async function createServer(options?: { embeddingModel?: string; mode?: "
   );
 
   registerProjectTools(server);
-  registerTaskTools(server, toolOptions);
+  registerTicketTools(server, toolOptions);
   registerLinkTools(server);
   registerQueryTools(server, toolOptions);
   registerVizTools(server, toolOptions);

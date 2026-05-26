@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { ulid } from "ulid";
@@ -12,12 +12,12 @@ import {
 import { applySchema, applyRegistrySchema } from "./schema.js";
 import type {
   Project,
-  Task,
-  TaskHistory,
-  TaskLink,
-  TaskComment,
+  Ticket,
+  TicketHistory,
+  TicketLink,
+  TicketComment,
   Status,
-  TaskType,
+  TicketType,
   Priority,
   LinkType,
   SortField,
@@ -51,7 +51,20 @@ export function getProjectDb(projectId: string): Database.Database {
   if (!db) {
     const dir = join(getBaseDir(), "projects", projectId);
     mkdirSync(dir, { recursive: true });
-    db = new Database(join(dir, "tasks.db"));
+
+    // Migrate legacy tasks.db → tickets.db (no-op if already done).
+    const legacyPath = join(dir, "tasks.db");
+    const newPath = join(dir, "tickets.db");
+    if (!existsSync(newPath) && existsSync(legacyPath)) {
+      renameSync(legacyPath, newPath);
+      for (const suffix of ["-wal", "-shm"]) {
+        if (existsSync(legacyPath + suffix)) {
+          renameSync(legacyPath + suffix, newPath + suffix);
+        }
+      }
+    }
+
+    db = new Database(newPath);
     applySchema(db);
     projectDbs.set(projectId, db);
   }
@@ -152,19 +165,19 @@ export function getProject(directory: string, projectId?: string): Project {
 
 function recordChange(
   db: Database.Database,
-  taskId: string,
+  ticketId: string,
   field: string,
   oldValue: string | null,
   newValue: string | null
 ): void {
   db.prepare(
-    "INSERT INTO task_history (id, task_id, field_changed, old_value, new_value, changed_at, changed_by) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(ulid(), taskId, field, oldValue, newValue, new Date().toISOString(), getCurrentUser());
+    "INSERT INTO ticket_history (id, ticket_id, field_changed, old_value, new_value, changed_at, changed_by) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(ulid(), ticketId, field, oldValue, newValue, new Date().toISOString(), getCurrentUser());
 }
 
 // --- Row to entity helpers ---
 
-interface TaskRow {
+interface TicketRow {
   id: string;
   title: string;
   description: string;
@@ -174,7 +187,7 @@ interface TaskRow {
   estimate: string | null;
   actual: string | null;
   tags: string;
-  parent_task_id: string | null;
+  parent_ticket_id: string | null;
   assignee: string | null;
   due_date: string | null;
   created_at: string;
@@ -183,11 +196,11 @@ interface TaskRow {
   metadata: string;
 }
 
-function rowToTask(row: TaskRow): Task {
+function rowToTicket(row: TicketRow): Ticket {
   return {
     ...row,
     status: row.status as Status,
-    type: row.type as TaskType,
+    type: row.type as TicketType,
     priority: row.priority as Priority,
     tags: JSON.parse(row.tags) as string[],
     metadata: JSON.parse(row.metadata) as Record<string, unknown>,
@@ -196,56 +209,56 @@ function rowToTask(row: TaskRow): Task {
 
 // --- Embedding helper ---
 
-async function embedTask(db: Database.Database, task: Task): Promise<void> {
-  const comments = getComments(db, task.id);
+async function embedTicket(db: Database.Database, ticket: Ticket): Promise<void> {
+  const comments = getComments(db, ticket.id);
   const commentText = comments.map((c) => c.content).join("\n");
-  const content = `${task.title}\n${task.description}\n${task.tags.join(", ")}${commentText ? `\n${commentText}` : ""}`;
+  const content = `${ticket.title}\n${ticket.description}\n${ticket.tags.join(", ")}${commentText ? `\n${commentText}` : ""}`;
   const contentHash = createHash("sha256").update(content).digest("hex");
 
   const existing = db
-    .prepare("SELECT content_hash FROM task_embeddings WHERE task_id = ?")
-    .get(task.id) as { content_hash: string } | undefined;
+    .prepare("SELECT content_hash FROM ticket_embeddings WHERE ticket_id = ?")
+    .get(ticket.id) as { content_hash: string } | undefined;
 
   if (existing && existing.content_hash === contentHash) return;
 
   const embedding = await embed(content);
   const buf = embeddingToBuffer(embedding);
   const rowid = BigInt(
-    (db.prepare("SELECT rowid FROM tasks WHERE id = ?").get(task.id) as { rowid: number }).rowid
+    (db.prepare("SELECT rowid FROM tickets WHERE id = ?").get(ticket.id) as { rowid: number }).rowid
   );
 
   db.transaction(() => {
     db.prepare(
-      "INSERT OR REPLACE INTO task_embeddings (task_id, embedding, content_hash) VALUES (?, ?, ?)"
-    ).run(task.id, buf, contentHash);
-    db.prepare("DELETE FROM task_vec WHERE rowid = ?").run(rowid);
-    db.prepare("INSERT INTO task_vec(rowid, embedding) VALUES (?, ?)").run(
+      "INSERT OR REPLACE INTO ticket_embeddings (ticket_id, embedding, content_hash) VALUES (?, ?, ?)"
+    ).run(ticket.id, buf, contentHash);
+    db.prepare("DELETE FROM ticket_vec WHERE rowid = ?").run(rowid);
+    db.prepare("INSERT INTO ticket_vec(rowid, embedding) VALUES (?, ?)").run(
       rowid,
       buf
     );
   })();
 }
 
-// --- Task CRUD ---
+// --- Ticket CRUD ---
 
-export async function createTask(
+export async function createTicket(
   db: Database.Database,
   input: {
     title: string;
     description?: string;
     status?: Status;
-    type?: TaskType;
+    type?: TicketType;
     priority?: Priority;
     estimate?: string;
     tags?: string[];
-    parent_task_id?: string;
+    parent_ticket_id?: string;
     assignee?: string;
     due_date?: string | null;
     metadata?: Record<string, unknown>;
-    links?: Array<{ target_task_id: string; link_type: LinkType }>;
+    links?: Array<{ target_ticket_id: string; link_type: LinkType }>;
     initial_comment?: string;
   }
-): Promise<Task & { links?: TaskLink[]; comment?: TaskComment }> {
+): Promise<Ticket & { links?: TicketLink[]; comment?: TicketComment }> {
   const now = new Date().toISOString();
   const id = ulid();
   const tags = input.tags ?? [];
@@ -253,18 +266,18 @@ export async function createTask(
   const status = input.status ?? "open";
 
   db.prepare(`
-    INSERT INTO tasks (id, title, description, status, type, priority, estimate, tags, parent_task_id, assignee, due_date, created_at, updated_at, metadata)
+    INSERT INTO tickets (id, title, description, status, type, priority, estimate, tags, parent_ticket_id, assignee, due_date, created_at, updated_at, metadata)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     input.title,
     input.description ?? "",
     status,
-    input.type ?? "task",
+    input.type ?? "chore",
     input.priority ?? "medium",
     input.estimate ?? null,
     JSON.stringify(tags),
-    input.parent_task_id ?? null,
+    input.parent_ticket_id ?? null,
     input.assignee ?? null,
     input.due_date ?? null,
     now,
@@ -277,41 +290,41 @@ export async function createTask(
     recordChange(db, id, "status", "open", status);
   }
 
-  const task = getTaskById(db, id)!;
+  const ticket = getTicketById(db, id)!;
 
-  const result: Task & { links?: TaskLink[]; comment?: TaskComment } = { ...task };
+  const result: Ticket & { links?: TicketLink[]; comment?: TicketComment } = { ...ticket };
 
   if (input.links && input.links.length > 0) {
-    result.links = input.links.map((l) => linkTasks(db, id, l.target_task_id, l.link_type));
+    result.links = input.links.map((l) => linkTickets(db, id, l.target_ticket_id, l.link_type));
   }
 
   if (input.initial_comment) {
     result.comment = await addComment(db, id, input.initial_comment);
   } else {
-    await embedTask(db, task);
+    await embedTicket(db, ticket);
   }
 
   return result;
 }
 
-export function getTaskById(db: Database.Database, taskId: string): Task | null {
+export function getTicketById(db: Database.Database, ticketId: string): Ticket | null {
   const row = db
-    .prepare("SELECT * FROM tasks WHERE id = ?")
-    .get(taskId) as TaskRow | undefined;
-  return row ? rowToTask(row) : null;
+    .prepare("SELECT * FROM tickets WHERE id = ?")
+    .get(ticketId) as TicketRow | undefined;
+  return row ? rowToTicket(row) : null;
 }
 
-export async function updateTask(
+export async function updateTicket(
   db: Database.Database,
   input: {
-    task_id: string;
+    ticket_id: string;
     title?: string;
     description?: string;
-    type?: TaskType;
+    type?: TicketType;
     priority?: Priority;
     estimate?: string | null;
     tags?: string[];
-    parent_task_id?: string | null;
+    parent_ticket_id?: string | null;
     assignee?: string | null;
     due_date?: string | null;
     metadata?: Record<string, unknown>;
@@ -319,9 +332,9 @@ export async function updateTask(
     completed_at?: string | null;
     actual?: string | null;
   }
-): Promise<Task> {
-  const current = getTaskById(db, input.task_id);
-  if (!current) throw new Error(`Task not found: ${input.task_id}`);
+): Promise<Ticket> {
+  const current = getTicketById(db, input.ticket_id);
+  if (!current) throw new Error(`Ticket not found: ${input.ticket_id}`);
 
   const updates: string[] = [];
   const params: unknown[] = [];
@@ -340,7 +353,7 @@ export async function updateTask(
 
     updates.push(`${field} = ?`);
     params.push(serialize ? newStr : newValue);
-    recordChange(db, input.task_id, field, oldStr, newStr);
+    recordChange(db, input.ticket_id, field, oldStr, newStr);
 
     if (field === "title" || field === "description" || field === "tags") {
       needsReembed = true;
@@ -355,7 +368,7 @@ export async function updateTask(
   diffField("actual", input.actual, current.actual);
   diffField("status", input.status, current.status);
   diffField("completed_at", input.completed_at, current.completed_at);
-  diffField("parent_task_id", input.parent_task_id, current.parent_task_id);
+  diffField("parent_ticket_id", input.parent_ticket_id, current.parent_ticket_id);
   diffField("assignee", input.assignee, current.assignee);
   diffField("due_date", input.due_date, current.due_date);
   diffField("tags", input.tags, current.tags, (v) => JSON.stringify(v));
@@ -364,134 +377,134 @@ export async function updateTask(
   if (updates.length > 0) {
     updates.push("updated_at = ?");
     params.push(new Date().toISOString());
-    params.push(input.task_id);
+    params.push(input.ticket_id);
 
-    db.prepare(`UPDATE tasks SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+    db.prepare(`UPDATE tickets SET ${updates.join(", ")} WHERE id = ?`).run(...params);
   }
 
-  const updated = getTaskById(db, input.task_id)!;
-  if (needsReembed) await embedTask(db, updated);
+  const updated = getTicketById(db, input.ticket_id)!;
+  if (needsReembed) await embedTicket(db, updated);
   return updated;
 }
 
-export function deleteTask(db: Database.Database, taskId: string): void {
-  const task = getTaskById(db, taskId);
-  if (!task) throw new Error(`Task not found: ${taskId}`);
-  db.prepare("DELETE FROM tasks WHERE id = ?").run(taskId);
+export function deleteTicket(db: Database.Database, ticketId: string): void {
+  const ticket = getTicketById(db, ticketId);
+  if (!ticket) throw new Error(`Ticket not found: ${ticketId}`);
+  db.prepare("DELETE FROM tickets WHERE id = ?").run(ticketId);
 }
 
 // --- Workflow ---
 
-export async function startTask(db: Database.Database, taskId: string): Promise<Task> {
-  const task = getTaskById(db, taskId);
-  if (!task) throw new Error(`Task not found: ${taskId}`);
-  if (task.status === "done" || task.status === "cancelled") {
-    throw new Error(`Cannot start task with status: ${task.status}`);
+export async function startTicket(db: Database.Database, ticketId: string): Promise<Ticket> {
+  const ticket = getTicketById(db, ticketId);
+  if (!ticket) throw new Error(`Ticket not found: ${ticketId}`);
+  if (ticket.status === "done" || ticket.status === "cancelled") {
+    throw new Error(`Cannot start ticket with status: ${ticket.status}`);
   }
-  return updateTask(db, { task_id: taskId, status: "in_progress" });
+  return updateTicket(db, { ticket_id: ticketId, status: "in_progress" });
 }
 
-export async function completeTask(
+export async function completeTicket(
   db: Database.Database,
-  taskId: string,
+  ticketId: string,
   actual?: string
-): Promise<Task> {
-  const task = getTaskById(db, taskId);
-  if (!task) throw new Error(`Task not found: ${taskId}`);
-  if (task.status === "cancelled") {
-    throw new Error("Cannot complete a cancelled task");
+): Promise<Ticket> {
+  const ticket = getTicketById(db, ticketId);
+  if (!ticket) throw new Error(`Ticket not found: ${ticketId}`);
+  if (ticket.status === "cancelled") {
+    throw new Error("Cannot complete a cancelled ticket");
   }
-  return updateTask(db, {
-    task_id: taskId,
+  return updateTicket(db, {
+    ticket_id: ticketId,
     status: "done",
     completed_at: new Date().toISOString(),
     actual: actual ?? undefined,
   });
 }
 
-export async function cancelTask(db: Database.Database, taskId: string): Promise<Task> {
-  const task = getTaskById(db, taskId);
-  if (!task) throw new Error(`Task not found: ${taskId}`);
-  if (task.status === "cancelled") {
-    throw new Error("Task is already cancelled");
+export async function cancelTicket(db: Database.Database, ticketId: string): Promise<Ticket> {
+  const ticket = getTicketById(db, ticketId);
+  if (!ticket) throw new Error(`Ticket not found: ${ticketId}`);
+  if (ticket.status === "cancelled") {
+    throw new Error("Ticket is already cancelled");
   }
-  return updateTask(db, { task_id: taskId, status: "cancelled" });
+  return updateTicket(db, { ticket_id: ticketId, status: "cancelled" });
 }
 
-export async function reopenTask(db: Database.Database, taskId: string): Promise<Task> {
-  const task = getTaskById(db, taskId);
-  if (!task) throw new Error(`Task not found: ${taskId}`);
-  if (task.status === "open") {
-    throw new Error("Task is already open");
+export async function reopenTicket(db: Database.Database, ticketId: string): Promise<Ticket> {
+  const ticket = getTicketById(db, ticketId);
+  if (!ticket) throw new Error(`Ticket not found: ${ticketId}`);
+  if (ticket.status === "open") {
+    throw new Error("Ticket is already open");
   }
-  return updateTask(db, { task_id: taskId, status: "open", completed_at: null });
+  return updateTicket(db, { ticket_id: ticketId, status: "open", completed_at: null });
 }
 
 // --- Comments ---
 
 export async function addComment(
   db: Database.Database,
-  taskId: string,
+  ticketId: string,
   content: string
-): Promise<TaskComment> {
-  const task = getTaskById(db, taskId);
-  if (!task) throw new Error(`Task not found: ${taskId}`);
+): Promise<TicketComment> {
+  const ticket = getTicketById(db, ticketId);
+  if (!ticket) throw new Error(`Ticket not found: ${ticketId}`);
 
-  const comment: TaskComment = {
+  const comment: TicketComment = {
     id: ulid(),
-    task_id: taskId,
+    ticket_id: ticketId,
     content,
     created_at: new Date().toISOString(),
     created_by: getCurrentUser(),
   };
 
   db.prepare(
-    "INSERT INTO task_comments (id, task_id, content, created_at, created_by) VALUES (?, ?, ?, ?, ?)"
-  ).run(comment.id, comment.task_id, comment.content, comment.created_at, comment.created_by);
+    "INSERT INTO ticket_comments (id, ticket_id, content, created_at, created_by) VALUES (?, ?, ?, ?, ?)"
+  ).run(comment.id, comment.ticket_id, comment.content, comment.created_at, comment.created_by);
 
-  await embedTask(db, task);
+  await embedTicket(db, ticket);
 
   return comment;
 }
 
-export function getComments(db: Database.Database, taskId: string): TaskComment[] {
+export function getComments(db: Database.Database, ticketId: string): TicketComment[] {
   return db
-    .prepare("SELECT * FROM task_comments WHERE task_id = ? ORDER BY created_at")
-    .all(taskId) as TaskComment[];
+    .prepare("SELECT * FROM ticket_comments WHERE ticket_id = ? ORDER BY created_at")
+    .all(ticketId) as TicketComment[];
 }
 
 // --- Links ---
 
-export function linkTasks(
+export function linkTickets(
   db: Database.Database,
   sourceId: string,
   targetId: string,
   linkType: LinkType
-): TaskLink {
+): TicketLink {
   if (sourceId === targetId) {
-    throw new Error("Cannot link a task to itself");
+    throw new Error("Cannot link a ticket to itself");
   }
 
-  // Verify both tasks exist
-  if (!getTaskById(db, sourceId)) throw new Error(`Task not found: ${sourceId}`);
-  if (!getTaskById(db, targetId)) throw new Error(`Task not found: ${targetId}`);
+  // Verify both tickets exist
+  if (!getTicketById(db, sourceId)) throw new Error(`Ticket not found: ${sourceId}`);
+  if (!getTicketById(db, targetId)) throw new Error(`Ticket not found: ${targetId}`);
 
-  const link: TaskLink = {
+  const link: TicketLink = {
     id: ulid(),
-    source_task_id: sourceId,
-    target_task_id: targetId,
+    source_ticket_id: sourceId,
+    target_ticket_id: targetId,
     link_type: linkType,
     created_at: new Date().toISOString(),
   };
 
   db.prepare(
-    "INSERT INTO task_links (id, source_task_id, target_task_id, link_type, created_at) VALUES (?, ?, ?, ?, ?)"
-  ).run(link.id, link.source_task_id, link.target_task_id, link.link_type, link.created_at);
+    "INSERT INTO ticket_links (id, source_ticket_id, target_ticket_id, link_type, created_at) VALUES (?, ?, ?, ?, ?)"
+  ).run(link.id, link.source_ticket_id, link.target_ticket_id, link.link_type, link.created_at);
 
   return link;
 }
 
-export function unlinkTasks(
+export function unlinkTickets(
   db: Database.Database,
   sourceId: string,
   targetId: string,
@@ -499,7 +512,7 @@ export function unlinkTasks(
 ): void {
   const result = db
     .prepare(
-      "DELETE FROM task_links WHERE source_task_id = ? AND target_task_id = ? AND link_type = ?"
+      "DELETE FROM ticket_links WHERE source_ticket_id = ? AND target_ticket_id = ? AND link_type = ?"
     )
     .run(sourceId, targetId, linkType);
 
@@ -508,37 +521,37 @@ export function unlinkTasks(
   }
 }
 
-export function getLinks(db: Database.Database, taskId: string): TaskLink[] {
+export function getLinks(db: Database.Database, ticketId: string): TicketLink[] {
   return db
     .prepare(
-      "SELECT * FROM task_links WHERE source_task_id = ? OR target_task_id = ? ORDER BY created_at"
+      "SELECT * FROM ticket_links WHERE source_ticket_id = ? OR target_ticket_id = ? ORDER BY created_at"
     )
-    .all(taskId, taskId) as TaskLink[];
+    .all(ticketId, ticketId) as TicketLink[];
 }
 
 // --- History ---
 
-export function getHistory(db: Database.Database, taskId: string): TaskHistory[] {
+export function getHistory(db: Database.Database, ticketId: string): TicketHistory[] {
   return db
-    .prepare("SELECT * FROM task_history WHERE task_id = ? ORDER BY changed_at")
-    .all(taskId) as TaskHistory[];
+    .prepare("SELECT * FROM ticket_history WHERE ticket_id = ? ORDER BY changed_at")
+    .all(ticketId) as TicketHistory[];
 }
 
-// --- List tasks ---
+// --- List tickets ---
 
 function toArray<T>(value: T | T[] | undefined): T[] | undefined {
   if (value === undefined) return undefined;
   return Array.isArray(value) ? value : [value];
 }
 
-export function listTasks(
+export function listTickets(
   db: Database.Database,
   filters: {
     status?: Status | Status[];
-    type?: TaskType | TaskType[];
+    type?: TicketType | TicketType[];
     priority?: Priority | Priority[];
     tags?: string[];
-    parent_task_id?: string | null;
+    parent_ticket_id?: string | null;
     assignee?: string | null;
     created_after?: string;
     created_before?: string;
@@ -551,7 +564,7 @@ export function listTasks(
     limit?: number;
     offset?: number;
   }
-): { tasks: Task[]; total: number } {
+): { tickets: Ticket[]; total: number } {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -575,17 +588,17 @@ export function listTasks(
 
   if (filters.tags && filters.tags.length > 0) {
     conditions.push(
-      `(SELECT COUNT(*) FROM json_each(tasks.tags) WHERE json_each.value IN (${filters.tags.map(() => "?").join(", ")})) = ?`
+      `(SELECT COUNT(*) FROM json_each(tickets.tags) WHERE json_each.value IN (${filters.tags.map(() => "?").join(", ")})) = ?`
     );
     params.push(...filters.tags, filters.tags.length);
   }
 
-  if (filters.parent_task_id !== undefined) {
-    if (filters.parent_task_id === null) {
-      conditions.push("parent_task_id IS NULL");
+  if (filters.parent_ticket_id !== undefined) {
+    if (filters.parent_ticket_id === null) {
+      conditions.push("parent_ticket_id IS NULL");
     } else {
-      conditions.push("parent_task_id = ?");
-      params.push(filters.parent_task_id);
+      conditions.push("parent_ticket_id = ?");
+      params.push(filters.parent_ticket_id);
     }
   }
 
@@ -628,48 +641,48 @@ export function listTasks(
   const dir = filters.sort_direction ?? "desc";
   const limit = filters.limit ?? 50;
   const offset = filters.offset ?? 0;
-  // Tasks without a due date should sort after tasks with one, regardless of direction.
+  // Tickets without a due date should sort after tickets with one, regardless of direction.
   const nullsClause = sort === "due_date" ? " NULLS LAST" : "";
 
   const countRow = db
-    .prepare(`SELECT COUNT(*) as total FROM tasks ${where}`)
+    .prepare(`SELECT COUNT(*) as total FROM tickets ${where}`)
     .get(...params) as { total: number };
 
   const rows = db
     .prepare(
-      `SELECT * FROM tasks ${where} ORDER BY ${sort} ${dir}${nullsClause} LIMIT ? OFFSET ?`
+      `SELECT * FROM tickets ${where} ORDER BY ${sort} ${dir}${nullsClause} LIMIT ? OFFSET ?`
     )
-    .all(...params, limit, offset) as TaskRow[];
+    .all(...params, limit, offset) as TicketRow[];
 
   return {
-    tasks: rows.map(rowToTask),
+    tickets: rows.map(rowToTicket),
     total: countRow.total,
   };
 }
 
 // --- Search ---
 
-export async function searchTasks(
+export async function searchTickets(
   db: Database.Database,
   query: string,
   opts: {
     mode?: SearchMode;
     status?: Status | Status[];
-    type?: TaskType | TaskType[];
+    type?: TicketType | TicketType[];
     priority?: Priority | Priority[];
     limit?: number;
   } = {}
-): Promise<Array<Task & { score: number }>> {
+): Promise<Array<Ticket & { score: number }>> {
   const mode = opts.mode ?? "hybrid";
   const limit = opts.limit ?? 20;
   const statusArr = toArray(opts.status);
   const typeArr = toArray(opts.type);
   const priorityArr = toArray(opts.priority);
 
-  function matchesFilters(task: Task): boolean {
-    if (statusArr && !statusArr.includes(task.status)) return false;
-    if (typeArr && !typeArr.includes(task.type)) return false;
-    if (priorityArr && !priorityArr.includes(task.priority)) return false;
+  function matchesFilters(ticket: Ticket): boolean {
+    if (statusArr && !statusArr.includes(ticket.status)) return false;
+    if (typeArr && !typeArr.includes(ticket.type)) return false;
+    if (priorityArr && !priorityArr.includes(ticket.priority)) return false;
     return true;
   }
 
@@ -698,15 +711,15 @@ export async function searchTasks(
     const rows = db
       .prepare(
         `SELECT t.*, fts.rank as score
-         FROM tasks_fts fts
-         JOIN tasks t ON t.rowid = fts.rowid
-         WHERE tasks_fts MATCH ?${where}
+         FROM tickets_fts fts
+         JOIN tickets t ON t.rowid = fts.rowid
+         WHERE tickets_fts MATCH ?${where}
          ORDER BY fts.rank
          LIMIT ?`
       )
-      .all(query, ...params, limit) as (TaskRow & { score: number })[];
+      .all(query, ...params, limit) as (TicketRow & { score: number })[];
 
-    return rows.map((r) => ({ ...rowToTask(r), score: r.score }));
+    return rows.map((r) => ({ ...rowToTicket(r), score: r.score }));
   }
 
   // --- KNN helper (uses sqlite-vec indexed search) ---
@@ -719,21 +732,21 @@ export async function searchTasks(
     return db
       .prepare(
         `SELECT t.id, knn.distance
-         FROM (SELECT rowid, distance FROM task_vec WHERE embedding MATCH ? AND k = ?) knn
-         JOIN tasks t ON t.rowid = knn.rowid`
+         FROM (SELECT rowid, distance FROM ticket_vec WHERE embedding MATCH ? AND k = ?) knn
+         JOIN tickets t ON t.rowid = knn.rowid`
       )
       .all(queryBuf, kLimit) as Array<{ id: string; distance: number }>;
   }
 
   if (mode === "semantic") {
     const knnRows = await knnSearch(limit * 5);
-    const results: Array<Task & { score: number }> = [];
+    const results: Array<Ticket & { score: number }> = [];
     for (const row of knnRows) {
       if (results.length >= limit) break;
-      const task = getTaskById(db, row.id);
-      if (!task) continue;
-      if (!matchesFilters(task)) continue;
-      results.push({ ...task, score: 1 - row.distance });
+      const ticket = getTicketById(db, row.id);
+      if (!ticket) continue;
+      if (!matchesFilters(ticket)) continue;
+      results.push({ ...ticket, score: 1 - row.distance });
     }
     return results;
   }
@@ -745,9 +758,9 @@ export async function searchTasks(
   const ftsRows = db
     .prepare(
       `SELECT t.id
-       FROM tasks_fts fts
-       JOIN tasks t ON t.rowid = fts.rowid
-       WHERE tasks_fts MATCH ?
+       FROM tickets_fts fts
+       JOIN tickets t ON t.rowid = fts.rowid
+       WHERE tickets_fts MATCH ?
        ORDER BY fts.rank
        LIMIT ?`
     )
@@ -767,27 +780,27 @@ export async function searchTasks(
 
   const sorted = [...rrfScores.entries()].sort((a, b) => b[1] - a[1]);
 
-  const results: Array<Task & { score: number }> = [];
+  const results: Array<Ticket & { score: number }> = [];
   for (const [id, score] of sorted) {
     if (results.length >= limit) break;
-    const task = getTaskById(db, id);
-    if (!task) continue;
-    if (!matchesFilters(task)) continue;
-    results.push({ ...task, score });
+    const ticket = getTicketById(db, id);
+    if (!ticket) continue;
+    if (!matchesFilters(ticket)) continue;
+    results.push({ ...ticket, score });
   }
   return results;
 }
 
-// --- Task graph (BFS) ---
+// --- Ticket graph (BFS) ---
 
-export function getTaskGraph(
+export function getTicketGraph(
   db: Database.Database,
-  taskId: string,
+  ticketId: string,
   depth: number = 1
-): { nodes: Task[]; edges: TaskLink[] } {
+): { nodes: Ticket[]; edges: TicketLink[] } {
   const visited = new Set<string>();
-  const allEdges: TaskLink[] = [];
-  let frontier = [taskId];
+  const allEdges: TicketLink[] = [];
+  let frontier = [ticketId];
 
   for (let d = 0; d <= depth && frontier.length > 0; d++) {
     const nextFrontier: string[] = [];
@@ -803,7 +816,7 @@ export function getTaskGraph(
             allEdges.push(link);
           }
           const neighbor =
-            link.source_task_id === id ? link.target_task_id : link.source_task_id;
+            link.source_ticket_id === id ? link.target_ticket_id : link.source_ticket_id;
           if (!visited.has(neighbor)) {
             nextFrontier.push(neighbor);
           }
@@ -814,10 +827,10 @@ export function getTaskGraph(
     frontier = nextFrontier;
   }
 
-  const nodes: Task[] = [];
+  const nodes: Ticket[] = [];
   for (const id of visited) {
-    const task = getTaskById(db, id);
-    if (task) nodes.push(task);
+    const ticket = getTicketById(db, id);
+    if (ticket) nodes.push(ticket);
   }
 
   return { nodes, edges: allEdges };
@@ -835,7 +848,7 @@ export function getProjectStats(
 } {
   const rows = db
     .prepare(
-      "SELECT status, type, priority, COUNT(*) as count FROM tasks GROUP BY status, type, priority"
+      "SELECT status, type, priority, COUNT(*) as count FROM tickets GROUP BY status, type, priority"
     )
     .all() as Array<{ status: string; type: string; priority: string; count: number }>;
 
@@ -861,7 +874,7 @@ export function listTags(
 ): Array<{ tag: string; count: number }> {
   return db
     .prepare(
-      "SELECT value as tag, COUNT(*) as count FROM tasks, json_each(tasks.tags) GROUP BY value ORDER BY count DESC"
+      "SELECT value as tag, COUNT(*) as count FROM tickets, json_each(tickets.tags) GROUP BY value ORDER BY count DESC"
     )
     .all() as Array<{ tag: string; count: number }>;
 }

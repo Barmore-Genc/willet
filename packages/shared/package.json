@@ -10,7 +10,7 @@
     "build": "npm run build:views && tsc",
     "check": "tsc",
     "build:server": "tsc",
-    "build:views": "cross-env INPUT=views/dependency-graph/index.html vite build && cross-env INPUT=views/task-board/index.html vite build && cross-env INPUT=views/project-stats/index.html vite build"
+    "build:views": "cross-env INPUT=views/dependency-graph/index.html vite build && cross-env INPUT=views/ticket-board/index.html vite build && cross-env INPUT=views/project-stats/index.html vite build"
   },
   "license": "AGPL-3.0-only",
   "engines": {

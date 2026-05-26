@@ -9,7 +9,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 // --- Types ---
 
-interface Task {
+interface Ticket {
   id: string;
   title: string;
   status: string;
@@ -20,7 +20,7 @@ interface Task {
 }
 
 interface BoardData {
-  tasks: Task[];
+  tickets: Ticket[];
   groupBy: string;
 }
 
@@ -41,16 +41,16 @@ const PRIORITY_BADGES: Record<string, { color: string; label: string }> = {
 };
 
 const TYPE_ICONS: Record<string, string> = {
-  task: "\u2611",
-  bug: "\ud83d\udc1b",
-  feature: "\u2728",
-  epic: "\ud83d\ude80",
+  chore: "☑",
+  bug: "🐛",
+  feature: "✨",
+  epic: "🚀",
 };
 
 const GROUP_ORDERS: Record<string, string[]> = {
   status: ["open", "in_progress", "done", "cancelled"],
   priority: ["urgent", "high", "medium", "low"],
-  type: ["epic", "feature", "task", "bug"],
+  type: ["epic", "feature", "chore", "bug"],
 };
 
 // --- Style ---
@@ -181,16 +181,16 @@ function renderBoard(data: BoardData) {
   const groupBy = data.groupBy || "status";
   const order = GROUP_ORDERS[groupBy] || GROUP_ORDERS.status;
 
-  const groups = new Map<string, Task[]>();
-  for (const task of data.tasks) {
-    const key = (task as Record<string, unknown>)[groupBy] as string;
+  const groups = new Map<string, Ticket[]>();
+  for (const ticket of data.tickets) {
+    const key = (ticket as Record<string, unknown>)[groupBy] as string;
     const list = groups.get(key) ?? [];
-    list.push(task);
+    list.push(ticket);
     groups.set(key, list);
   }
 
   for (const group of order) {
-    const tasks = groups.get(group) ?? [];
+    const tickets = groups.get(group) ?? [];
 
     const col = document.createElement("div");
     col.className = "column";
@@ -205,39 +205,39 @@ function renderBoard(data: BoardData) {
     col.innerHTML = `
       <div class="column-header" style="border-top: 3px solid ${headerColor}">
         <span>${group.replace("_", " ")}</span>
-        <span class="count">${tasks.length}</span>
+        <span class="count">${tickets.length}</span>
       </div>
     `;
 
     const body = document.createElement("div");
     body.className = "column-body";
 
-    if (tasks.length === 0) {
-      body.innerHTML = '<div class="empty">No tasks</div>';
+    if (tickets.length === 0) {
+      body.innerHTML = '<div class="empty">No tickets</div>';
     } else {
-      for (const task of tasks) {
+      for (const ticket of tickets) {
         const card = document.createElement("div");
         card.className = "card";
 
-        const typeIcon = TYPE_ICONS[task.type] || "";
-        const priority = PRIORITY_BADGES[task.priority];
-        const shortId = task.id.slice(-8);
+        const typeIcon = TYPE_ICONS[ticket.type] || "";
+        const priority = PRIORITY_BADGES[ticket.priority];
+        const shortId = ticket.id.slice(-8);
 
         let metaHtml = `<span class="card-id">${shortId}</span>`;
         if (priority) {
           metaHtml += `<span class="badge" style="background:${priority.color}">${priority.label}</span>`;
         }
-        for (const tag of task.tags || []) {
+        for (const tag of ticket.tags || []) {
           metaHtml += `<span class="tag">${tag}</span>`;
         }
-        if (task.estimate) {
-          metaHtml += `<span class="estimate">${task.estimate}</span>`;
+        if (ticket.estimate) {
+          metaHtml += `<span class="estimate">${ticket.estimate}</span>`;
         }
 
         card.innerHTML = `
           <div class="card-header">
             <span class="card-type">${typeIcon}</span>
-            <span class="card-title">${task.title}</span>
+            <span class="card-title">${ticket.title}</span>
           </div>
           <div class="card-meta">${metaHtml}</div>
         `;
@@ -260,7 +260,7 @@ function extractBoardData(result: CallToolResult): BoardData | null {
     if (item.type === "text") {
       try {
         const parsed = JSON.parse(item.text);
-        if (parsed.tasks && parsed.groupBy) return parsed;
+        if (parsed.tickets && parsed.groupBy) return parsed;
       } catch { /* not JSON */ }
     }
   }
@@ -276,7 +276,7 @@ function handleHostContext(ctx: McpUiHostContext) {
   }
 }
 
-const app = new App({ name: "Task Board", version: "1.0.0" });
+const app = new App({ name: "Ticket Board", version: "1.0.0" });
 
 app.ontoolinput = () => {
   const container = document.getElementById("board")!;

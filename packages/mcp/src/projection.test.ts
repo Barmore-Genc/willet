@@ -1,23 +1,23 @@
 import { describe, it, expect } from "vitest";
 import {
-  projectTask,
-  projectTasks,
-  type Task,
+  projectTicket,
+  projectTickets,
+  type Ticket,
   type ToolOptions,
 } from "@willet/shared/dist/models/types.js";
 
-function makeTask(overrides: Partial<Task> = {}): Task {
+function makeTask(overrides: Partial<Ticket> = {}): Ticket {
   return {
     id: "01HTEST0000000000000000000",
     title: "Short title",
     description: "A short description.",
     status: "open",
-    type: "task",
+    type: "chore",
     priority: "medium",
     estimate: null,
     actual: null,
     tags: [],
-    parent_task_id: null,
+    parent_ticket_id: null,
     assignee: null,
     due_date: null,
     created_at: "2026-01-01T00:00:00.000Z",
@@ -31,7 +31,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 const selfhosted: ToolOptions = { mode: "selfhosted" };
 const local: ToolOptions = { mode: "local" };
 
-describe("projectTask — short", () => {
+describe("projectTicket — short", () => {
   it("returns only the short-mode fields", () => {
     const task = makeTask({
       assignee: "alice",
@@ -39,7 +39,7 @@ describe("projectTask — short", () => {
       estimate: "2h",
       due_date: "2026-05-01",
     });
-    const out = projectTask(task, "short", selfhosted);
+    const out = projectTicket(task, "short", selfhosted);
     expect(Object.keys(out).sort()).toEqual(
       ["assignee", "due_date", "estimate", "id", "priority", "status", "tags", "title", "type"].sort(),
     );
@@ -49,40 +49,40 @@ describe("projectTask — short", () => {
 
   it("omits assignee in local mode", () => {
     const task = makeTask({ assignee: "alice" });
-    const out = projectTask(task, "short", local);
+    const out = projectTicket(task, "short", local);
     expect(out).not.toHaveProperty("assignee");
   });
 
   it("truncates long titles with an ellipsis indicator", () => {
     const long = "A".repeat(200);
-    const out = projectTask(makeTask({ title: long }), "short", selfhosted).title as string;
+    const out = projectTicket(makeTask({ title: long }), "short", selfhosted).title as string;
     expect(out.length).toBeLessThanOrEqual(80);
     expect(out.endsWith("…")).toBe(true);
   });
 
   it("marks multi-line titles with an ellipsis even when the first line fits", () => {
     const multi = `first line\nsecond line`;
-    expect(projectTask(makeTask({ title: multi }), "short", selfhosted).title).toBe("first line…");
+    expect(projectTicket(makeTask({ title: multi }), "short", selfhosted).title).toBe("first line…");
   });
 
   it("leaves short single-line titles untouched", () => {
-    expect(projectTask(makeTask({ title: "just a title" }), "short", selfhosted).title).toBe("just a title");
+    expect(projectTicket(makeTask({ title: "just a title" }), "short", selfhosted).title).toBe("just a title");
   });
 
   it("truncates tags to 5 with a '+N more' sentinel", () => {
     const tags = ["a", "b", "c", "d", "e", "f", "g"];
-    expect(projectTask(makeTask({ tags }), "short", selfhosted).tags).toEqual([
+    expect(projectTicket(makeTask({ tags }), "short", selfhosted).tags).toEqual([
       "a", "b", "c", "d", "e", "+2 more",
     ]);
   });
 
   it("leaves tags untouched when 5 or fewer", () => {
     const tags = ["a", "b", "c"];
-    expect(projectTask(makeTask({ tags }), "short", selfhosted).tags).toEqual(["a", "b", "c"]);
+    expect(projectTicket(makeTask({ tags }), "short", selfhosted).tags).toEqual(["a", "b", "c"]);
   });
 
   it("excludes description, metadata, timestamps", () => {
-    const out = projectTask(makeTask({ description: "body", metadata: { k: 1 } }), "short", selfhosted);
+    const out = projectTicket(makeTask({ description: "body", metadata: { k: 1 } }), "short", selfhosted);
     expect(out).not.toHaveProperty("description");
     expect(out).not.toHaveProperty("metadata");
     expect(out).not.toHaveProperty("created_at");
@@ -90,10 +90,10 @@ describe("projectTask — short", () => {
   });
 });
 
-describe("projectTask — detailed", () => {
+describe("projectTicket — detailed", () => {
   it("returns all fields with description truncated", () => {
     const longDesc = "x".repeat(500);
-    const out = projectTask(makeTask({ description: longDesc }), "detailed", selfhosted);
+    const out = projectTicket(makeTask({ description: longDesc }), "detailed", selfhosted);
     expect((out.description as string).length).toBeLessThanOrEqual(200);
     expect((out.description as string).endsWith("…")).toBe(true);
     expect(out).toHaveProperty("created_at");
@@ -101,39 +101,39 @@ describe("projectTask — detailed", () => {
   });
 
   it("leaves short descriptions untouched", () => {
-    const out = projectTask(makeTask({ description: "short desc" }), "detailed", selfhosted);
+    const out = projectTicket(makeTask({ description: "short desc" }), "detailed", selfhosted);
     expect(out.description).toBe("short desc");
   });
 
   it("strips assignee in local mode", () => {
-    const out = projectTask(makeTask({ assignee: "alice" }), "detailed", local);
+    const out = projectTicket(makeTask({ assignee: "alice" }), "detailed", local);
     expect(out).not.toHaveProperty("assignee");
   });
 });
 
-describe("projectTask — full", () => {
+describe("projectTicket — full", () => {
   it("returns the task unchanged in selfhosted mode", () => {
     const task = makeTask({ description: "y".repeat(500), title: "z".repeat(200) });
-    const out = projectTask(task, "full", selfhosted);
+    const out = projectTicket(task, "full", selfhosted);
     expect(out.description).toBe(task.description);
     expect(out.title).toBe(task.title);
   });
 
   it("strips assignee in local mode", () => {
-    const out = projectTask(makeTask({ assignee: "alice" }), "full", local);
+    const out = projectTicket(makeTask({ assignee: "alice" }), "full", local);
     expect(out).not.toHaveProperty("assignee");
   });
 });
 
-describe("projectTasks", () => {
+describe("projectTickets", () => {
   it("preserves score from search results", () => {
     const withScore = { ...makeTask(), score: 0.87 };
-    const out = projectTasks([withScore], "short", selfhosted);
+    const out = projectTickets([withScore], "short", selfhosted);
     expect(out[0].score).toBe(0.87);
   });
 
   it("omits score when not present", () => {
-    const out = projectTasks([makeTask()], "short", selfhosted);
+    const out = projectTickets([makeTask()], "short", selfhosted);
     expect(out[0]).not.toHaveProperty("score");
   });
 });

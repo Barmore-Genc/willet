@@ -5,8 +5,8 @@ import { z } from "zod";
 export const StatusSchema = z.enum(["open", "in_progress", "done", "cancelled"]);
 export type Status = z.infer<typeof StatusSchema>;
 
-export const TaskTypeSchema = z.enum(["task", "bug", "feature", "epic"]);
-export type TaskType = z.infer<typeof TaskTypeSchema>;
+export const TicketTypeSchema = z.enum(["chore", "bug", "feature", "epic"]);
+export type TicketType = z.infer<typeof TicketTypeSchema>;
 
 export const PrioritySchema = z.enum(["low", "medium", "high", "urgent"]);
 export type Priority = z.infer<typeof PrioritySchema>;
@@ -52,17 +52,17 @@ export interface Project {
   created_at: string;
 }
 
-export interface Task {
+export interface Ticket {
   id: string;
   title: string;
   description: string;
   status: Status;
-  type: TaskType;
+  type: TicketType;
   priority: Priority;
   estimate: string | null;
   actual: string | null;
   tags: string[];
-  parent_task_id: string | null;
+  parent_ticket_id: string | null;
   assignee: string | null;
   due_date: string | null;
   created_at: string;
@@ -71,9 +71,9 @@ export interface Task {
   metadata: Record<string, unknown>;
 }
 
-export interface TaskHistory {
+export interface TicketHistory {
   id: string;
-  task_id: string;
+  ticket_id: string;
   field_changed: string;
   old_value: string | null;
   new_value: string | null;
@@ -81,17 +81,17 @@ export interface TaskHistory {
   changed_by: string;
 }
 
-export interface TaskLink {
+export interface TicketLink {
   id: string;
-  source_task_id: string;
-  target_task_id: string;
+  source_ticket_id: string;
+  target_ticket_id: string;
   link_type: LinkType;
   created_at: string;
 }
 
-export interface TaskComment {
+export interface TicketComment {
   id: string;
-  task_id: string;
+  ticket_id: string;
   content: string;
   created_at: string;
   created_by: string;
@@ -107,92 +107,92 @@ export const ListProjectsInputSchema = z.object({
   name: z.string().optional(),
 });
 
-export const TaskLinkInputSchema = z.object({
-  target_task_id: z.string(),
+export const TicketLinkInputSchema = z.object({
+  target_ticket_id: z.string(),
   link_type: LinkTypeSchema,
 });
 
-export const CreateTaskInputSchema = z.object({
+export const CreateTicketInputSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   status: StatusSchema.optional(),
-  type: TaskTypeSchema.optional(),
+  type: TicketTypeSchema.optional(),
   priority: PrioritySchema.optional(),
   estimate: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  parent_task_id: z.string().optional(),
+  parent_ticket_id: z.string().optional(),
   assignee: z.string().optional(),
   due_date: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
-  links: z.array(TaskLinkInputSchema).optional(),
+  links: z.array(TicketLinkInputSchema).optional(),
   initial_comment: z.string().optional(),
 });
 
-export const UpdateTaskInputSchema = z.object({
-  task_id: z.string(),
+export const UpdateTicketInputSchema = z.object({
+  ticket_id: z.string(),
   title: z.string().min(1).optional(),
   description: z.string().optional(),
-  type: TaskTypeSchema.optional(),
+  type: TicketTypeSchema.optional(),
   priority: PrioritySchema.optional(),
   estimate: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
-  parent_task_id: z.string().nullable().optional(),
+  parent_ticket_id: z.string().nullable().optional(),
   assignee: z.string().nullable().optional(),
   due_date: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
-export const GetTaskInputSchema = z.object({
-  task_id: z.string(),
+export const GetTicketInputSchema = z.object({
+  ticket_id: z.string(),
   include_history: z.boolean().optional(),
-  include_subtasks: z.boolean().optional(),
+  include_subtickets: z.boolean().optional(),
   verbosity: VerbositySchema.optional(),
 });
 
-export const DeleteTaskInputSchema = z.object({
-  task_id: z.string(),
+export const DeleteTicketInputSchema = z.object({
+  ticket_id: z.string(),
 });
 
-export const StartTaskInputSchema = z.object({
-  task_id: z.string(),
+export const StartTicketInputSchema = z.object({
+  ticket_id: z.string(),
 });
 
-export const CompleteTaskInputSchema = z.object({
-  task_id: z.string(),
+export const CompleteTicketInputSchema = z.object({
+  ticket_id: z.string(),
   actual: z.string().optional(),
 });
 
-export const CancelTaskInputSchema = z.object({
-  task_id: z.string(),
+export const CancelTicketInputSchema = z.object({
+  ticket_id: z.string(),
 });
 
-export const ReopenTaskInputSchema = z.object({
-  task_id: z.string(),
+export const ReopenTicketInputSchema = z.object({
+  ticket_id: z.string(),
 });
 
 export const AddCommentInputSchema = z.object({
-  task_id: z.string(),
+  ticket_id: z.string(),
   content: z.string().min(1),
 });
 
-export const LinkTasksInputSchema = z.object({
-  source_task_id: z.string(),
-  target_task_id: z.string(),
+export const LinkTicketsInputSchema = z.object({
+  source_ticket_id: z.string(),
+  target_ticket_id: z.string(),
   link_type: LinkTypeSchema,
 });
 
-export const UnlinkTasksInputSchema = z.object({
-  source_task_id: z.string(),
-  target_task_id: z.string(),
+export const UnlinkTicketsInputSchema = z.object({
+  source_ticket_id: z.string(),
+  target_ticket_id: z.string(),
   link_type: LinkTypeSchema,
 });
 
-export const ListTasksInputSchema = z.object({
+export const ListTicketsInputSchema = z.object({
   status: stringOrArray(StatusSchema).optional(),
-  type: stringOrArray(TaskTypeSchema).optional(),
+  type: stringOrArray(TicketTypeSchema).optional(),
   priority: stringOrArray(PrioritySchema).optional(),
   tags: z.array(z.string()).optional(),
-  parent_task_id: z.string().nullable().optional(),
+  parent_ticket_id: z.string().nullable().optional(),
   assignee: z.string().nullable().optional(),
   created_after: z.string().optional(),
   created_before: z.string().optional(),
@@ -207,26 +207,26 @@ export const ListTasksInputSchema = z.object({
   verbosity: VerbositySchema.optional(),
 });
 
-export const SearchTasksInputSchema = z.object({
+export const SearchTicketsInputSchema = z.object({
   query: z.string().min(1),
   mode: SearchModeSchema.optional(),
   status: stringOrArray(StatusSchema).optional(),
-  type: stringOrArray(TaskTypeSchema).optional(),
+  type: stringOrArray(TicketTypeSchema).optional(),
   priority: stringOrArray(PrioritySchema).optional(),
   limit: z.number().int().positive().optional(),
   verbosity: VerbositySchema.optional(),
 });
 
-export const GetTaskGraphInputSchema = z.object({
-  task_id: z.string(),
+export const GetTicketGraphInputSchema = z.object({
+  ticket_id: z.string(),
   depth: z.number().int().min(1).max(5).optional(),
   verbosity: VerbositySchema.optional(),
 });
 
-export const RenderTaskBoardInputSchema = z.object({
+export const RenderTicketBoardInputSchema = z.object({
   group_by: GroupBySchema.optional(),
   status: stringOrArray(StatusSchema).optional(),
-  type: stringOrArray(TaskTypeSchema).optional(),
+  type: stringOrArray(TicketTypeSchema).optional(),
   priority: stringOrArray(PrioritySchema).optional(),
   tags: z.array(z.string()).optional(),
 });
@@ -236,7 +236,7 @@ export const GetProjectStatsInputSchema = z.object({});
 export const ListTagsInputSchema = z.object({});
 
 export const RenderDependencyGraphInputSchema = z.object({
-  task_id: z.string(),
+  ticket_id: z.string(),
   depth: z.number().int().min(1).max(5).optional(),
 });
 
@@ -247,34 +247,34 @@ export interface ToolOptions {
   validAssignees?: string[];
 }
 
-/** Strip assignee from a task object (local mode only) */
-export function formatTask(task: Task, options: ToolOptions): Omit<Task, "assignee"> | Task {
+/** Strip assignee from a ticket object (local mode only) */
+export function formatTicket(ticket: Ticket, options: ToolOptions): Omit<Ticket, "assignee"> | Ticket {
   if (options.mode === "local") {
-    const { assignee, ...rest } = task;
+    const { assignee, ...rest } = ticket;
     return rest;
   }
-  return task;
+  return ticket;
 }
 
-/** Strip assignee from an array of tasks (local mode only) */
-export function formatTasks(tasks: Task[], options: ToolOptions): Array<Omit<Task, "assignee"> | Task> {
+/** Strip assignee from an array of tickets (local mode only) */
+export function formatTickets(tickets: Ticket[], options: ToolOptions): Array<Omit<Ticket, "assignee"> | Ticket> {
   if (options.mode === "local") {
-    return tasks.map(({ assignee, ...rest }) => rest);
+    return tickets.map(({ assignee, ...rest }) => rest);
   }
-  return tasks;
+  return tickets;
 }
 
 // --- Verbosity projection ---
 //
-// Task-reading tools return large payloads when a caller only needs an at-a-glance list.
-// `projectTask` trims the serialized shape based on a verbosity mode:
+// Ticket-reading tools return large payloads when a caller only needs an at-a-glance list.
+// `projectTicket` trims the serialized shape based on a verbosity mode:
 //
 //   short    — id, title (truncated), status, type, priority, estimate, assignee, tags
 //              (truncated), due_date. For triage scans.
 //   detailed — all fields, description truncated.
-//   full     — the full Task, no truncation.
+//   full     — the full Ticket, no truncation.
 //
-// Local mode still strips the `assignee` field in every mode, matching `formatTask`.
+// Local mode still strips the `assignee` field in every mode, matching `formatTicket`.
 
 const SHORT_TITLE_MAX = 80;
 const SHORT_TAGS_MAX = 5;
@@ -301,45 +301,45 @@ function shortTags(tags: string[]): string[] {
   return [...tags.slice(0, SHORT_TAGS_MAX), `+${remaining} more`];
 }
 
-export type TaskProjection = Record<string, unknown>;
+export type TicketProjection = Record<string, unknown>;
 
-/** Project a task for serialization under the given verbosity mode. */
-export function projectTask(task: Task, verbosity: Verbosity, options: ToolOptions): TaskProjection {
+/** Project a ticket for serialization under the given verbosity mode. */
+export function projectTicket(ticket: Ticket, verbosity: Verbosity, options: ToolOptions): TicketProjection {
   if (verbosity === "full") {
-    return formatTask(task, options) as TaskProjection;
+    return formatTicket(ticket, options) as TicketProjection;
   }
   if (verbosity === "short") {
-    const out: TaskProjection = {
-      id: task.id,
-      title: shortTitle(task.title),
-      status: task.status,
-      type: task.type,
-      priority: task.priority,
-      estimate: task.estimate,
-      tags: shortTags(task.tags),
-      due_date: task.due_date,
+    const out: TicketProjection = {
+      id: ticket.id,
+      title: shortTitle(ticket.title),
+      status: ticket.status,
+      type: ticket.type,
+      priority: ticket.priority,
+      estimate: ticket.estimate,
+      tags: shortTags(ticket.tags),
+      due_date: ticket.due_date,
     };
     if (options.mode !== "local") {
-      out.assignee = task.assignee;
+      out.assignee = ticket.assignee;
     }
     return out;
   }
   // detailed: full shape, description truncated
-  const formatted = formatTask(task, options) as TaskProjection;
+  const formatted = formatTicket(ticket, options) as TicketProjection;
   return {
     ...formatted,
-    description: truncateString(task.description, DETAILED_DESCRIPTION_MAX),
+    description: truncateString(ticket.description, DETAILED_DESCRIPTION_MAX),
   };
 }
 
-/** Project an array of tasks. Preserves an extra `score` field if present (search results). */
-export function projectTasks<T extends Task>(
-  tasks: T[],
+/** Project an array of tickets. Preserves an extra `score` field if present (search results). */
+export function projectTickets<T extends Ticket>(
+  tickets: T[],
   verbosity: Verbosity,
   options: ToolOptions,
-): TaskProjection[] {
-  return tasks.map((t) => {
-    const projected = projectTask(t, verbosity, options);
+): TicketProjection[] {
+  return tickets.map((t) => {
+    const projected = projectTicket(t, verbosity, options);
     if ("score" in t) {
       return { ...projected, score: (t as T & { score: number }).score };
     }
