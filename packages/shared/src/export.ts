@@ -20,6 +20,9 @@ export interface TicketWithExtras extends Ticket {
   history: TicketHistory[];
 }
 
+export const EXPORT_VERSION = 2;
+export const SUPPORTED_EXPORT_VERSIONS = [1, 2] as const;
+
 export interface ExportTicketJson {
   exportVersion: number;
   project: string;
@@ -209,7 +212,7 @@ export function ticketsToJSON(
   projectName: string,
 ): ExportTicketJson {
   return {
-    exportVersion: 2,
+    exportVersion: EXPORT_VERSION,
     project: projectName,
     tickets: tickets.map((t) => ({
       id: t.id,
@@ -328,6 +331,110 @@ const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
 
 function isValidUlid(id: string): boolean {
   return ULID_RE.test(id);
+}
+
+// v1 export shape: top-level `tasks` array, `parent_task_id`/`source_task_id`/
+// `target_task_id` field names, and the legacy `"task"` type value.
+interface ExportTicketJsonV1 {
+  exportVersion?: number;
+  project?: string;
+  tasks: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    status?: string;
+    type?: string;
+    priority?: string;
+    estimate?: string | null;
+    actual?: string | null;
+    tags?: string[];
+    assignee?: string | null;
+    parent_task_id?: string | null;
+    created_at: string;
+    updated_at: string;
+    completed_at?: string | null;
+    metadata?: Record<string, unknown>;
+    comments?: Array<{
+      id: string;
+      content: string;
+      created_at: string;
+      created_by: string;
+    }>;
+    links?: Array<{
+      id: string;
+      source_task_id: string;
+      target_task_id: string;
+      link_type: string;
+      created_at: string;
+    }>;
+    history?: Array<{
+      id: string;
+      field_changed: string;
+      old_value: string | null;
+      new_value: string | null;
+      changed_at: string;
+      changed_by: string;
+    }>;
+  }>;
+}
+
+function migrateV1ToV2(v1: ExportTicketJsonV1): ExportTicketJson {
+  return {
+    exportVersion: EXPORT_VERSION,
+    project: v1.project ?? "",
+    tickets: (v1.tasks ?? []).map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description ?? "",
+      status: t.status ?? "open",
+      type: t.type === "task" ? "chore" : (t.type ?? "chore"),
+      priority: t.priority ?? "medium",
+      estimate: t.estimate ?? null,
+      actual: t.actual ?? null,
+      tags: t.tags ?? [],
+      assignee: t.assignee ?? null,
+      parent_ticket_id: t.parent_task_id ?? null,
+      created_at: t.created_at,
+      updated_at: t.updated_at,
+      completed_at: t.completed_at ?? null,
+      metadata: t.metadata ?? {},
+      comments: t.comments ?? [],
+      links: (t.links ?? []).map((l) => ({
+        id: l.id,
+        source_ticket_id: l.source_task_id,
+        target_ticket_id: l.target_task_id,
+        link_type: l.link_type,
+        created_at: l.created_at,
+      })),
+      history: t.history ?? [],
+    })),
+  };
+}
+
+// Normalize a parsed export payload to v2 shape. Throws on unknown/unsupported
+// versions. Detects v1 either by `exportVersion: 1` or by the presence of a
+// top-level `tasks` array (early exports omitted exportVersion entirely).
+export function normalizeExportPayload(payload: unknown): ExportTicketJson {
+  if (payload == null || typeof payload !== "object") {
+    throw new Error("Export payload is not a JSON object.");
+  }
+  const p = payload as Record<string, unknown>;
+  const version = typeof p.exportVersion === "number" ? p.exportVersion : undefined;
+
+  if (version === 2) {
+    return p as unknown as ExportTicketJson;
+  }
+  if (version === 1 || (version === undefined && Array.isArray(p.tasks))) {
+    return migrateV1ToV2(p as unknown as ExportTicketJsonV1);
+  }
+  if (version === undefined) {
+    throw new Error(
+      "Export payload is missing exportVersion and has no recognizable shape.",
+    );
+  }
+  throw new Error(
+    `Unsupported export version: ${version}. Supported versions: ${SUPPORTED_EXPORT_VERSIONS.join(", ")}.`,
+  );
 }
 
 export function importTicketsIntoDb(
@@ -536,13 +643,16 @@ export async function importFromZip(
     }
 
     const entryNames = Object.keys(entries);
+    // Accept both v2 (`tickets-*.json`) and v1 (`tasks-*.json`) data files.
     const ticketFiles = entryNames.filter(
-      (n) => n.startsWith("tickets-") && n.endsWith(".json"),
+      (n) =>
+        (n.startsWith("tickets-") || n.startsWith("tasks-")) &&
+        n.endsWith(".json"),
     );
 
     if (ticketFiles.length === 0) {
       throw new Error(
-        "No ticket data files (tickets-*.json) found in the archive.",
+        "No ticket data files (tickets-*.json or tasks-*.json) found in the archive.",
       );
     }
 
@@ -550,10 +660,15 @@ export async function importFromZip(
 
     for (const ticketFile of ticketFiles) {
       const buf = await zip.entryData(ticketFile);
-      const ticketData = JSON.parse(buf.toString("utf-8")) as ExportTicketJson;
+      const rawPayload = JSON.parse(buf.toString("utf-8"));
+      const ticketData = normalizeExportPayload(rawPayload);
 
       const projectName =
-        ticketData.project || ticketFile.replace(/^tickets-/, "").replace(/\.json$/, "");
+        ticketData.project ||
+        ticketFile
+          .replace(/^tickets-/, "")
+          .replace(/^tasks-/, "")
+          .replace(/\.json$/, "");
 
       let projectId: string;
       let resolvedName: string;

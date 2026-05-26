@@ -693,7 +693,7 @@ describe("Willet MCP stdio E2E", () => {
     expect(graphText).not.toContain("assignee");
   });
 
-  it("should not include assignee column in task board in local mode", async () => {
+  it("should not include assignee column in ticket board in local mode", async () => {
     const projectDir = join(dataDir, "local-board-project");
     const initResult = await client.callTool({
       name: "init_project",

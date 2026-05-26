@@ -13,6 +13,7 @@ import {
   exportProject,
   importTicketsIntoDb,
   importFromZip,
+  normalizeExportPayload,
 } from "@willet/shared";
 import type { ExportTicketJson } from "@willet/shared";
 
@@ -430,6 +431,89 @@ describe("importTicketsIntoDb", () => {
   });
 });
 
+describe("normalizeExportPayload", () => {
+  it("passes v2 payloads through unchanged", () => {
+    const payload = {
+      exportVersion: 2,
+      project: "p",
+      tickets: [],
+    };
+    const out = normalizeExportPayload(payload);
+    expect(out.exportVersion).toBe(2);
+    expect(out.project).toBe("p");
+    expect(out.tickets).toEqual([]);
+  });
+
+  it("migrates v1 payloads to v2 (renames task fields and remaps type)", () => {
+    const v1 = {
+      exportVersion: 1,
+      project: "legacy",
+      tasks: [
+        {
+          id: "01JTASK1AAAAAAAAAAAAAAAA00",
+          title: "Legacy task",
+          description: "",
+          status: "open",
+          type: "task",
+          priority: "medium",
+          tags: [],
+          parent_task_id: "01JPRNT1AAAAAAAAAAAAAAAA00",
+          created_at: "2025-01-01T00:00:00.000Z",
+          updated_at: "2025-01-01T00:00:00.000Z",
+          comments: [],
+          links: [
+            {
+              id: "01J0NK1AAAAAAAAAAAAAAAA000",
+              source_task_id: "01JTASK1AAAAAAAAAAAAAAAA00",
+              target_task_id: "01JTASK2AAAAAAAAAAAAAAAA00",
+              link_type: "blocks",
+              created_at: "2025-01-01T00:00:00.000Z",
+            },
+          ],
+          history: [],
+        },
+      ],
+    };
+    const out = normalizeExportPayload(v1);
+    expect(out.exportVersion).toBe(2);
+    expect(out.project).toBe("legacy");
+    expect(out.tickets[0].parent_ticket_id).toBe("01JPRNT1AAAAAAAAAAAAAAAA00");
+    expect(out.tickets[0].type).toBe("chore");
+    expect(out.tickets[0].links[0].source_ticket_id).toBe(
+      "01JTASK1AAAAAAAAAAAAAAAA00",
+    );
+    expect(out.tickets[0].links[0].target_ticket_id).toBe(
+      "01JTASK2AAAAAAAAAAAAAAAA00",
+    );
+  });
+
+  it("treats a payload without exportVersion but with `tasks` as v1", () => {
+    const ancient = {
+      project: "ancient",
+      tasks: [],
+    };
+    const out = normalizeExportPayload(ancient);
+    expect(out.exportVersion).toBe(2);
+  });
+
+  it("rejects unknown export versions", () => {
+    expect(() =>
+      normalizeExportPayload({ exportVersion: 99, project: "x", tickets: [] }),
+    ).toThrow(/Unsupported export version: 99/);
+  });
+
+  it("rejects payloads missing exportVersion and recognizable shape", () => {
+    expect(() => normalizeExportPayload({ project: "x" })).toThrow(
+      /missing exportVersion/,
+    );
+  });
+
+  it("rejects non-object payloads", () => {
+    expect(() => normalizeExportPayload(null)).toThrow(/not a JSON object/);
+    expect(() => normalizeExportPayload(42)).toThrow(/not a JSON object/);
+  });
+});
+
 describe("full export/import round-trip", () => {
   let tmpDir: string;
 
@@ -720,6 +804,107 @@ describe("full export/import round-trip", () => {
     expect(results[0].ticketCount).toBe(1);
 
     sourceDb.close();
+    targetDb.close();
+  });
+
+  it("should import a legacy v1 archive (tasks-*.json with parent_task_id)", async () => {
+    // Build a v1-shaped archive manually to simulate exports from before the
+    // task→ticket rename.
+    const { default: archiver } = await import("archiver");
+    const { createWriteStream } = await import("node:fs");
+    const v1Path = join(tmpDir, "legacy-v1.zip");
+
+    const v1Payload = {
+      exportVersion: 1,
+      project: "legacy-project",
+      tasks: [
+        {
+          id: "01JVGCY1AAAAAAAAAAAAAAAA00",
+          title: "Legacy parent",
+          description: "",
+          status: "open",
+          type: "task",
+          priority: "medium",
+          estimate: null,
+          actual: null,
+          tags: [],
+          assignee: null,
+          parent_task_id: null,
+          created_at: "2025-01-01T00:00:00.000Z",
+          updated_at: "2025-01-01T00:00:00.000Z",
+          completed_at: null,
+          metadata: {},
+          comments: [],
+          links: [],
+          history: [],
+        },
+        {
+          id: "01JVGCY2BBBBBBBBBBBBBBBBBB",
+          title: "Legacy child",
+          description: "",
+          status: "open",
+          type: "task",
+          priority: "medium",
+          estimate: null,
+          actual: null,
+          tags: [],
+          assignee: null,
+          parent_task_id: "01JVGCY1AAAAAAAAAAAAAAAA00",
+          created_at: "2025-01-02T00:00:00.000Z",
+          updated_at: "2025-01-02T00:00:00.000Z",
+          completed_at: null,
+          metadata: {},
+          comments: [],
+          links: [
+            {
+              id: "01JVGCYKAAAAAAAAAAAAAAAAA0",
+              source_task_id: "01JVGCY2BBBBBBBBBBBBBBBBBB",
+              target_task_id: "01JVGCY1AAAAAAAAAAAAAAAA00",
+              link_type: "blocks",
+              created_at: "2025-01-02T00:00:00.000Z",
+            },
+          ],
+          history: [],
+        },
+      ],
+    };
+
+    await new Promise<void>((resolve, reject) => {
+      const archive = archiver("zip", { zlib: { level: 6 } });
+      const output = createWriteStream(v1Path);
+      output.on("close", resolve);
+      output.on("error", reject);
+      archive.on("error", reject);
+      archive.pipe(output);
+      archive.append(JSON.stringify(v1Payload, null, 2), {
+        name: "tasks-legacy-project.json",
+      });
+      archive.finalize();
+    });
+
+    const targetDb = createTestDb();
+    const results = await importFromZip(
+      v1Path,
+      () => targetDb,
+      (name) => ({ id: ulid(), name }),
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].ticketCount).toBe(2);
+    expect(results[0].projectName).toBe("legacy-project");
+
+    const child = targetDb
+      .prepare("SELECT * FROM tickets WHERE id = ?")
+      .get("01JVGCY2BBBBBBBBBBBBBBBBBB") as Record<string, unknown>;
+    expect(child.parent_ticket_id).toBe("01JVGCY1AAAAAAAAAAAAAAAA00");
+    expect(child.type).toBe("chore"); // v1 "task" → v2 "chore"
+
+    const link = targetDb
+      .prepare("SELECT * FROM ticket_links")
+      .get() as Record<string, unknown>;
+    expect(link.source_ticket_id).toBe("01JVGCY2BBBBBBBBBBBBBBBBBB");
+    expect(link.target_ticket_id).toBe("01JVGCY1AAAAAAAAAAAAAAAA00");
+
     targetDb.close();
   });
 

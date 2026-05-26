@@ -20,6 +20,9 @@ export {
   exportProject,
   importTicketsIntoDb,
   importFromZip,
+  normalizeExportPayload,
+  EXPORT_VERSION,
+  SUPPORTED_EXPORT_VERSIONS,
 } from "./export.js";
 export type { TicketWithExtras, ExportTicketJson, ImportResult } from "./export.js";
 export { runExportCli, runImportCli } from "./export-cli.js";
