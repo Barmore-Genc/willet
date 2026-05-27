@@ -8,22 +8,22 @@ import type { ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
-  ListTasksInputSchema,
-  SearchTasksInputSchema,
-  GetTaskGraphInputSchema,
+  ListTicketsInputSchema,
+  SearchTicketsInputSchema,
+  GetTicketGraphInputSchema,
   GetProjectStatsInputSchema,
   ListTagsInputSchema,
   withProjectId,
-  projectTasks,
+  projectTickets,
   type ToolOptions,
   type Verbosity,
 } from "../models/types.js";
 import {
   getProject,
   getProjectDb,
-  listTasks,
-  searchTasks,
-  getTaskGraph,
+  listTickets,
+  searchTickets,
+  getTicketGraph,
   getProjectStats,
   listTags,
 } from "../db/queries.js";
@@ -58,47 +58,47 @@ async function loadView(name: string): Promise<string> {
 export function registerQueryTools(server: McpServer, options: ToolOptions): void {
   const listSchema =
     options.mode === "local"
-      ? withProjectId(ListTasksInputSchema.omit({ assignee: true }))
-      : withProjectId(ListTasksInputSchema);
+      ? withProjectId(ListTicketsInputSchema.omit({ assignee: true }))
+      : withProjectId(ListTicketsInputSchema);
 
   server.tool(
-    "list_tasks",
-    "List tasks with structured filtering (status, type, priority, tags, dates, parent). All filters use AND semantics. `verbosity` controls output: 'short' (id/title/status/type/priority/estimate/assignee/tags/due_date), 'detailed' (all fields, description truncated, default), or 'full' (all fields, no truncation).",
+    "list_tickets",
+    "List tickets with structured filtering (status, type, priority, tags, dates, parent). All filters use AND semantics. `verbosity` controls output: 'short' (id/title/status/type/priority/estimate/assignee/tags/due_date), 'detailed' (all fields, description truncated, default), or 'full' (all fields, no truncation).",
     listSchema.shape,
     async ({ project_id, verbosity, ...input }) => {
       const db = resolveDb(project_id);
-      const result = listTasks(db, input);
+      const result = listTickets(db, input);
       const mode: Verbosity = verbosity ?? "detailed";
       return {
-        content: [{ type: "text", text: JSON.stringify({ ...result, tasks: projectTasks(result.tasks, mode, options) }, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify({ ...result, tickets: projectTickets(result.tickets, mode, options) }, null, 2) }],
       };
     }
   );
 
   server.tool(
-    "search_tasks",
-    "Search tasks using text (FTS5), semantic (vector similarity), or hybrid (both with reciprocal rank fusion) mode. `verbosity` controls output: 'short', 'detailed' (default), or 'full'.",
-    withProjectId(SearchTasksInputSchema).shape,
+    "search_tickets",
+    "Search tickets using text (FTS5), semantic (vector similarity), or hybrid (both with reciprocal rank fusion) mode. `verbosity` controls output: 'short', 'detailed' (default), or 'full'.",
+    withProjectId(SearchTicketsInputSchema).shape,
     async ({ project_id, query, mode, status, type, priority, limit, verbosity }) => {
       const db = resolveDb(project_id);
-      const results = await searchTasks(db, query, { mode, status, type, priority, limit });
+      const results = await searchTickets(db, query, { mode, status, type, priority, limit });
       const v: Verbosity = verbosity ?? "detailed";
       return {
-        content: [{ type: "text", text: JSON.stringify(projectTasks(results, v, options), null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(projectTickets(results, v, options), null, 2) }],
       };
     }
   );
 
   server.tool(
-    "get_task_graph",
-    "Get a task and all linked tasks up to N hops out, returning nodes and edges. `verbosity` controls node output: 'short', 'detailed' (default), or 'full'.",
-    withProjectId(GetTaskGraphInputSchema).shape,
-    async ({ project_id, task_id, depth, verbosity }) => {
+    "get_ticket_graph",
+    "Get a ticket and all linked tickets up to N hops out, returning nodes and edges. `verbosity` controls node output: 'short', 'detailed' (default), or 'full'.",
+    withProjectId(GetTicketGraphInputSchema).shape,
+    async ({ project_id, ticket_id, depth, verbosity }) => {
       const db = resolveDb(project_id);
-      const graph = getTaskGraph(db, task_id, depth);
+      const graph = getTicketGraph(db, ticket_id, depth);
       const v: Verbosity = verbosity ?? "detailed";
       return {
-        content: [{ type: "text", text: JSON.stringify({ ...graph, nodes: projectTasks(graph.nodes, v, options) }, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify({ ...graph, nodes: projectTickets(graph.nodes, v, options) }, null, 2) }],
       };
     }
   );
@@ -124,7 +124,7 @@ export function registerQueryTools(server: McpServer, options: ToolOptions): voi
     server,
     "get_project_stats",
     {
-      description: "Get task counts grouped by status, type, and priority. Returns interactive dashboard in supporting clients.",
+      description: "Get ticket counts grouped by status, type, and priority. Returns interactive dashboard in supporting clients.",
       inputSchema: withProjectId(GetProjectStatsInputSchema).shape,
       _meta: { ui: { resourceUri: statsUri } },
     },
@@ -140,7 +140,7 @@ export function registerQueryTools(server: McpServer, options: ToolOptions): voi
 
   server.tool(
     "list_tags",
-    "List all tags in use with their task counts",
+    "List all tags in use with their ticket counts",
     withProjectId(ListTagsInputSchema).shape,
     async ({ project_id }) => {
       const db = resolveDb(project_id);

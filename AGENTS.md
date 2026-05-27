@@ -1,11 +1,11 @@
 # Willet
 
-A local-first task tracking MCP server for AI agents (Claude Code). Think Jira/Linear but operated entirely through MCP tools.
+A local-first ticket tracking MCP server for AI agents (Claude Code). Think Jira/Linear but operated entirely through MCP tools.
 
 ## Quick Reference
 
 - **Language**: TypeScript, Node.js
-- **Storage**: SQLite per project via `better-sqlite3` (~/.willet/projects/<id>/tasks.db)
+- **Storage**: SQLite per project via `better-sqlite3` (~/.willet/projects/<id>/tickets.db)
 - **Search**: FTS5 for text, local ONNX embeddings (`all-MiniLM-L6-v2`) for vector similarity
 - **MCP transport**: stdio (local via `@willet/mcp`), streamable HTTP + OAuth (deployed via `@willet/server`)
 
@@ -16,11 +16,11 @@ packages/
   shared/               # @willet/shared — core logic, tools, db, embeddings, views
     src/
       context.ts        # AsyncLocalStorage user context (getCurrentUser/runAsUser)
-      tools/            # One file per tool group (tasks, links, queries, projects, viz)
+      tools/            # One file per tool group (tickets, links, queries, projects, viz)
       db/               # schema.ts (migrations), queries.ts (typed helpers)
       embeddings/       # ONNX-based local embedding generation + cosine similarity
       models/           # TypeScript types & Zod schemas
-    views/              # Vite-built MCP Apps HTML (task board, dependency graph, stats)
+    views/              # Vite-built MCP Apps HTML (ticket board, dependency graph, stats)
 
   mcp/                  # @willet/mcp — local stdio server (published to npm)
     src/index.ts        # Thin stdio entrypoint
@@ -62,7 +62,7 @@ packages/
 ## Conventions
 
 - Use Zod schemas for all MCP tool input validation; derive TypeScript types from them
-- Every state change to a task must write a `task_history` row (use a helper, don't do it manually)
+- Every state change to a ticket must write a `ticket_history` row (use a helper, don't do it manually)
 - Tool handlers should be thin: validate input, call a query function, return result
 - SQLite migrations are sequential numbered files applied on DB open
 - Dates are stored as ISO 8601 strings in UTC

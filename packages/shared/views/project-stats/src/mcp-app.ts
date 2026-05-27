@@ -26,7 +26,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  task: "#6366f1",
+  chore: "#6366f1",
   bug: "#ef4444",
   feature: "#22c55e",
   epic: "#8b5cf6",
@@ -212,7 +212,7 @@ function renderDashboard(stats: StatsData) {
   renderBarChart(dashboard, "By Status", stats.byStatus, STATUS_COLORS,
     ["open", "in_progress", "done", "cancelled"]);
   renderBarChart(dashboard, "By Type", stats.byType, TYPE_COLORS,
-    ["epic", "feature", "task", "bug"]);
+    ["epic", "feature", "chore", "bug"]);
   renderBarChart(dashboard, "By Priority", stats.byPriority, PRIORITY_COLORS,
     ["urgent", "high", "medium", "low"]);
 

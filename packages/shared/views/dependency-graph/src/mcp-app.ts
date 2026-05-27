@@ -21,7 +21,7 @@ import { drag } from "d3-drag";
 
 // --- Types ---
 
-interface TaskNode extends SimulationNodeDatum {
+interface TicketNode extends SimulationNodeDatum {
   id: string;
   title: string;
   status: string;
@@ -30,11 +30,11 @@ interface TaskNode extends SimulationNodeDatum {
   shortId: string;
 }
 
-interface TaskEdge extends SimulationLinkDatum<TaskNode> {
+interface TicketEdge extends SimulationLinkDatum<TicketNode> {
   id: string;
   link_type: string;
-  source_task_id: string;
-  target_task_id: string;
+  source_ticket_id: string;
+  target_ticket_id: string;
 }
 
 interface GraphData {
@@ -47,8 +47,8 @@ interface GraphData {
   }>;
   edges: Array<{
     id: string;
-    source_task_id: string;
-    target_task_id: string;
+    source_ticket_id: string;
+    target_ticket_id: string;
     link_type: string;
   }>;
 }
@@ -153,9 +153,9 @@ function renderGraph(data: GraphData) {
   const width = container.clientWidth || 800;
   const height = container.clientHeight || 600;
 
-  const nodeMap = new Map<string, TaskNode>();
-  const nodes: TaskNode[] = data.nodes.map((n) => {
-    const node: TaskNode = {
+  const nodeMap = new Map<string, TicketNode>();
+  const nodes: TicketNode[] = data.nodes.map((n) => {
+    const node: TicketNode = {
       id: n.id,
       title: n.title.length > 30 ? n.title.slice(0, 28) + "..." : n.title,
       status: n.status,
@@ -167,15 +167,15 @@ function renderGraph(data: GraphData) {
     return node;
   });
 
-  const edges: TaskEdge[] = data.edges
-    .filter((e) => nodeMap.has(e.source_task_id) && nodeMap.has(e.target_task_id))
+  const edges: TicketEdge[] = data.edges
+    .filter((e) => nodeMap.has(e.source_ticket_id) && nodeMap.has(e.target_ticket_id))
     .map((e) => ({
       id: e.id,
-      source: e.source_task_id,
-      target: e.target_task_id,
+      source: e.source_ticket_id,
+      target: e.target_ticket_id,
       link_type: e.link_type,
-      source_task_id: e.source_task_id,
-      target_task_id: e.target_task_id,
+      source_ticket_id: e.source_ticket_id,
+      target_ticket_id: e.target_ticket_id,
     }));
 
   const svg = select(container)
@@ -245,30 +245,30 @@ function renderGraph(data: GraphData) {
         currentHighlight = d.id;
         const connectedIds = new Set<string>([d.id]);
         edges.forEach((e) => {
-          const srcId = typeof e.source === "object" ? (e.source as TaskNode).id : e.source;
-          const tgtId = typeof e.target === "object" ? (e.target as TaskNode).id : e.target;
+          const srcId = typeof e.source === "object" ? (e.source as TicketNode).id : e.source;
+          const tgtId = typeof e.target === "object" ? (e.target as TicketNode).id : e.target;
           if (srcId === d.id) connectedIds.add(tgtId);
           if (tgtId === d.id) connectedIds.add(srcId);
         });
 
-        svg.selectAll<SVGGElement, TaskNode>(".node-group")
+        svg.selectAll<SVGGElement, TicketNode>(".node-group")
           .classed("dimmed", (n) => !connectedIds.has(n.id))
           .classed("highlighted", (n) => connectedIds.has(n.id));
-        svg.selectAll<SVGLineElement, TaskEdge>(".link")
+        svg.selectAll<SVGLineElement, TicketEdge>(".link")
           .classed("dimmed", (e) => {
-            const srcId = typeof e.source === "object" ? (e.source as TaskNode).id : e.source;
-            const tgtId = typeof e.target === "object" ? (e.target as TaskNode).id : e.target;
+            const srcId = typeof e.source === "object" ? (e.source as TicketNode).id : e.source;
+            const tgtId = typeof e.target === "object" ? (e.target as TicketNode).id : e.target;
             return !connectedIds.has(srcId) || !connectedIds.has(tgtId);
           })
           .classed("highlighted", (e) => {
-            const srcId = typeof e.source === "object" ? (e.source as TaskNode).id : e.source;
-            const tgtId = typeof e.target === "object" ? (e.target as TaskNode).id : e.target;
+            const srcId = typeof e.source === "object" ? (e.source as TicketNode).id : e.source;
+            const tgtId = typeof e.target === "object" ? (e.target as TicketNode).id : e.target;
             return connectedIds.has(srcId) && connectedIds.has(tgtId);
           });
-        svg.selectAll<SVGTextElement, TaskEdge>(".link-label")
+        svg.selectAll<SVGTextElement, TicketEdge>(".link-label")
           .classed("dimmed", (e) => {
-            const srcId = typeof e.source === "object" ? (e.source as TaskNode).id : e.source;
-            const tgtId = typeof e.target === "object" ? (e.target as TaskNode).id : e.target;
+            const srcId = typeof e.source === "object" ? (e.source as TicketNode).id : e.source;
+            const tgtId = typeof e.target === "object" ? (e.target as TicketNode).id : e.target;
             return !connectedIds.has(srcId) || !connectedIds.has(tgtId);
           });
       }
@@ -296,7 +296,7 @@ function renderGraph(data: GraphData) {
     .text((d) => d.shortId);
 
   // Drag
-  const dragBehavior = drag<SVGGElement, TaskNode>()
+  const dragBehavior = drag<SVGGElement, TicketNode>()
     .on("start", (event, d) => {
       if (!event.active) simulation.alphaTarget(0.3).restart();
       d.fx = d.x;
@@ -318,7 +318,7 @@ function renderGraph(data: GraphData) {
   const simulation = forceSimulation(nodes)
     .force(
       "link",
-      forceLink<TaskNode, TaskEdge>(edges)
+      forceLink<TicketNode, TicketEdge>(edges)
         .id((d) => d.id)
         .distance(150)
     )
@@ -327,14 +327,14 @@ function renderGraph(data: GraphData) {
     .force("collide", forceCollide(40))
     .on("tick", () => {
       linkGroup
-        .attr("x1", (d) => (d.source as TaskNode).x!)
-        .attr("y1", (d) => (d.source as TaskNode).y!)
-        .attr("x2", (d) => (d.target as TaskNode).x!)
-        .attr("y2", (d) => (d.target as TaskNode).y!);
+        .attr("x1", (d) => (d.source as TicketNode).x!)
+        .attr("y1", (d) => (d.source as TicketNode).y!)
+        .attr("x2", (d) => (d.target as TicketNode).x!)
+        .attr("y2", (d) => (d.target as TicketNode).y!);
 
       linkLabelGroup
-        .attr("x", (d) => ((d.source as TaskNode).x! + (d.target as TaskNode).x!) / 2)
-        .attr("y", (d) => ((d.source as TaskNode).y! + (d.target as TaskNode).y!) / 2 - 6);
+        .attr("x", (d) => ((d.source as TicketNode).x! + (d.target as TicketNode).x!) / 2)
+        .attr("y", (d) => ((d.source as TicketNode).y! + (d.target as TicketNode).y!) / 2 - 6);
 
       nodeGroup.attr("transform", (d) => `translate(${d.x},${d.y})`);
     });

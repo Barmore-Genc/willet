@@ -6,24 +6,27 @@ import StreamZip from "node-stream-zip";
 import { ulid } from "ulid";
 import type Database from "better-sqlite3";
 import type {
-  Task,
-  TaskComment,
-  TaskLink,
-  TaskHistory,
+  Ticket,
+  TicketComment,
+  TicketLink,
+  TicketHistory,
 } from "./models/types.js";
 
 // --- Types ---
 
-export interface TaskWithExtras extends Task {
-  comments: TaskComment[];
-  links: TaskLink[];
-  history: TaskHistory[];
+export interface TicketWithExtras extends Ticket {
+  comments: TicketComment[];
+  links: TicketLink[];
+  history: TicketHistory[];
 }
 
-export interface ExportTaskJson {
+export const EXPORT_VERSION = 2;
+export const SUPPORTED_EXPORT_VERSIONS = [1, 2] as const;
+
+export interface ExportTicketJson {
   exportVersion: number;
   project: string;
-  tasks: Array<{
+  tickets: Array<{
     id: string;
     title: string;
     description: string;
@@ -34,7 +37,7 @@ export interface ExportTaskJson {
     actual: string | null;
     tags: string[];
     assignee: string | null;
-    parent_task_id: string | null;
+    parent_ticket_id: string | null;
     created_at: string;
     updated_at: string;
     completed_at: string | null;
@@ -47,8 +50,8 @@ export interface ExportTaskJson {
     }>;
     links: Array<{
       id: string;
-      source_task_id: string;
-      target_task_id: string;
+      source_ticket_id: string;
+      target_ticket_id: string;
       link_type: string;
       created_at: string;
     }>;
@@ -66,7 +69,7 @@ export interface ExportTaskJson {
 export interface ImportResult {
   projectName: string;
   projectId: string;
-  taskCount: number;
+  ticketCount: number;
   warnings: string[];
 }
 
@@ -79,58 +82,58 @@ const MAX_DECOMPRESSED_SIZE = 512 * 1024 * 1024;
 
 // --- Data gathering ---
 
-export function gatherTaskData(
+export function gatherTicketData(
   projectDb: Database.Database,
-): TaskWithExtras[] {
-  const tasks = projectDb
+): TicketWithExtras[] {
+  const tickets = projectDb
     .prepare(
-      "SELECT id, title, description, status, type, priority, estimate, actual, tags, parent_task_id, assignee, created_at, updated_at, completed_at, metadata FROM tasks ORDER BY created_at",
+      "SELECT id, title, description, status, type, priority, estimate, actual, tags, parent_ticket_id, assignee, created_at, updated_at, completed_at, metadata FROM tickets ORDER BY created_at",
     )
-    .all() as Task[];
+    .all() as Ticket[];
 
-  // Deduplicate links: since we query links for each task (both source and target),
-  // the same link can appear on multiple tasks. Collect globally and attach once.
+  // Deduplicate links: since we query links for each ticket (both source and target),
+  // the same link can appear on multiple tickets. Collect globally and attach once.
   const allLinks = projectDb
     .prepare(
-      "SELECT id, source_task_id, target_task_id, link_type, created_at FROM task_links ORDER BY created_at",
+      "SELECT id, source_ticket_id, target_ticket_id, link_type, created_at FROM ticket_links ORDER BY created_at",
     )
-    .all() as TaskLink[];
-  const linksByTask = new Map<string, TaskLink[]>();
+    .all() as TicketLink[];
+  const linksByTicket = new Map<string, TicketLink[]>();
   for (const link of allLinks) {
-    // Attach to source task only (matches cloud export behavior: each link appears once per task)
-    const list = linksByTask.get(link.source_task_id) ?? [];
+    // Attach to source ticket only (matches cloud export behavior: each link appears once per ticket)
+    const list = linksByTicket.get(link.source_ticket_id) ?? [];
     list.push(link);
-    linksByTask.set(link.source_task_id, list);
+    linksByTicket.set(link.source_ticket_id, list);
   }
 
-  return tasks.map((task) => {
-    const parsedTask = {
-      ...task,
+  return tickets.map((ticket) => {
+    const parsedTicket = {
+      ...ticket,
       tags:
-        typeof task.tags === "string"
-          ? (JSON.parse(task.tags) as string[])
-          : task.tags,
+        typeof ticket.tags === "string"
+          ? (JSON.parse(ticket.tags) as string[])
+          : ticket.tags,
       metadata:
-        typeof task.metadata === "string"
-          ? (JSON.parse(task.metadata) as Record<string, unknown>)
-          : task.metadata,
+        typeof ticket.metadata === "string"
+          ? (JSON.parse(ticket.metadata) as Record<string, unknown>)
+          : ticket.metadata,
     };
 
     const comments = projectDb
       .prepare(
-        "SELECT id, task_id, content, created_at, created_by FROM task_comments WHERE task_id = ? ORDER BY created_at",
+        "SELECT id, ticket_id, content, created_at, created_by FROM ticket_comments WHERE ticket_id = ? ORDER BY created_at",
       )
-      .all(task.id) as TaskComment[];
+      .all(ticket.id) as TicketComment[];
 
-    const links = linksByTask.get(task.id) ?? [];
+    const links = linksByTicket.get(ticket.id) ?? [];
 
     const history = projectDb
       .prepare(
-        "SELECT id, task_id, field_changed, old_value, new_value, changed_at, changed_by FROM task_history WHERE task_id = ? ORDER BY changed_at",
+        "SELECT id, ticket_id, field_changed, old_value, new_value, changed_at, changed_by FROM ticket_history WHERE ticket_id = ? ORDER BY changed_at",
       )
-      .all(task.id) as TaskHistory[];
+      .all(ticket.id) as TicketHistory[];
 
-    return { ...parsedTask, comments, links, history };
+    return { ...parsedTicket, comments, links, history };
   });
 }
 
@@ -149,7 +152,7 @@ function escapeCSV(value: string | null | undefined): string {
   return value;
 }
 
-function formatCommentsForCSV(comments: TaskComment[]): string {
+function formatCommentsForCSV(comments: TicketComment[]): string {
   if (comments.length === 0) return "";
   return comments
     .map((c) => {
@@ -162,7 +165,7 @@ function formatCommentsForCSV(comments: TaskComment[]): string {
     .join("\n");
 }
 
-export function tasksToCSV(tasks: TaskWithExtras[]): string {
+export function ticketsToCSV(tickets: TicketWithExtras[]): string {
   const headers = [
     "id",
     "title",
@@ -174,14 +177,14 @@ export function tasksToCSV(tasks: TaskWithExtras[]): string {
     "actual",
     "tags",
     "assignee",
-    "parent_task_id",
+    "parent_ticket_id",
     "created_at",
     "updated_at",
     "completed_at",
     "comments",
   ];
 
-  const rows = tasks.map((t) =>
+  const rows = tickets.map((t) =>
     [
       escapeCSV(t.id),
       escapeCSV(t.title),
@@ -193,7 +196,7 @@ export function tasksToCSV(tasks: TaskWithExtras[]): string {
       escapeCSV(t.actual),
       escapeCSV(Array.isArray(t.tags) ? t.tags.join(", ") : ""),
       escapeCSV(t.assignee),
-      escapeCSV(t.parent_task_id),
+      escapeCSV(t.parent_ticket_id),
       escapeCSV(t.created_at),
       escapeCSV(t.updated_at),
       escapeCSV(t.completed_at),
@@ -204,14 +207,14 @@ export function tasksToCSV(tasks: TaskWithExtras[]): string {
   return [headers.join(","), ...rows].join("\n");
 }
 
-export function tasksToJSON(
-  tasks: TaskWithExtras[],
+export function ticketsToJSON(
+  tickets: TicketWithExtras[],
   projectName: string,
-): ExportTaskJson {
+): ExportTicketJson {
   return {
-    exportVersion: 1,
+    exportVersion: EXPORT_VERSION,
     project: projectName,
-    tasks: tasks.map((t) => ({
+    tickets: tickets.map((t) => ({
       id: t.id,
       title: t.title,
       description: t.description,
@@ -222,7 +225,7 @@ export function tasksToJSON(
       actual: t.actual,
       tags: t.tags,
       assignee: t.assignee,
-      parent_task_id: t.parent_task_id,
+      parent_ticket_id: t.parent_ticket_id,
       created_at: t.created_at,
       updated_at: t.updated_at,
       completed_at: t.completed_at,
@@ -235,8 +238,8 @@ export function tasksToJSON(
       })),
       links: t.links.map((l) => ({
         id: l.id,
-        source_task_id: l.source_task_id,
-        target_task_id: l.target_task_id,
+        source_ticket_id: l.source_ticket_id,
+        target_ticket_id: l.target_ticket_id,
         link_type: l.link_type,
         created_at: l.created_at,
       })),
@@ -261,22 +264,22 @@ This archive contains a full export of your Willet project data.
 
 Files included:
 
-  tasks-<project>.csv
-    A CSV dump of all tasks in the project (all statuses). Columns:
+  tickets-<project>.csv
+    A CSV dump of all tickets in the project (all statuses). Columns:
     id, title, description, status, type, priority, estimate, actual,
-    tags, assignee, parent_task_id, created_at, updated_at,
+    tags, assignee, parent_ticket_id, created_at, updated_at,
     completed_at, comments.
     Comments are formatted as "author (date): text" entries separated
     by newlines, so non-technical users can read them in Excel or
     Google Sheets.
 
-  tasks-<project>.json
-    The same task data as the CSV, but in JSON format with full
-    structured data. Each task includes its comments, links to other
-    tasks, and change history as nested arrays. This file is intended
+  tickets-<project>.json
+    The same ticket data as the CSV, but in JSON format with full
+    structured data. Each ticket includes its comments, links to other
+    tickets, and change history as nested arrays. This file is intended
     for machine consumption and programmatic import.
 
-Export format version: 1
+Export format version: 2
 Generated by: Willet
 Documentation: https://github.com/SeriousBug/willet
 
@@ -298,8 +301,8 @@ export async function exportProject(
   projectDb: Database.Database,
   projectName: string,
   outputPath: string,
-): Promise<{ taskCount: number }> {
-  const tasks = gatherTaskData(projectDb);
+): Promise<{ ticketCount: number }> {
+  const tickets = gatherTicketData(projectDb);
   const slug = slugify(projectName);
 
   const archive = archiver("zip", { zlib: { level: 6 } });
@@ -307,9 +310,9 @@ export async function exportProject(
   archive.pipe(output);
 
   archive.append(README_CONTENT, { name: "README.txt" });
-  archive.append(tasksToCSV(tasks), { name: `tasks-${slug}.csv` });
-  archive.append(JSON.stringify(tasksToJSON(tasks, projectName), null, 2), {
-    name: `tasks-${slug}.json`,
+  archive.append(ticketsToCSV(tickets), { name: `tickets-${slug}.csv` });
+  archive.append(JSON.stringify(ticketsToJSON(tickets, projectName), null, 2), {
+    name: `tickets-${slug}.json`,
   });
 
   await archive.finalize();
@@ -319,7 +322,7 @@ export async function exportProject(
     output.on("error", reject);
   });
 
-  return { taskCount: tasks.length };
+  return { ticketCount: tickets.length };
 }
 
 // --- Import ---
@@ -330,49 +333,153 @@ function isValidUlid(id: string): boolean {
   return ULID_RE.test(id);
 }
 
-export function importTasksIntoDb(
+// v1 export shape: top-level `tasks` array, `parent_task_id`/`source_task_id`/
+// `target_task_id` field names, and the legacy `"task"` type value.
+interface ExportTicketJsonV1 {
+  exportVersion?: number;
+  project?: string;
+  tasks: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    status?: string;
+    type?: string;
+    priority?: string;
+    estimate?: string | null;
+    actual?: string | null;
+    tags?: string[];
+    assignee?: string | null;
+    parent_task_id?: string | null;
+    created_at: string;
+    updated_at: string;
+    completed_at?: string | null;
+    metadata?: Record<string, unknown>;
+    comments?: Array<{
+      id: string;
+      content: string;
+      created_at: string;
+      created_by: string;
+    }>;
+    links?: Array<{
+      id: string;
+      source_task_id: string;
+      target_task_id: string;
+      link_type: string;
+      created_at: string;
+    }>;
+    history?: Array<{
+      id: string;
+      field_changed: string;
+      old_value: string | null;
+      new_value: string | null;
+      changed_at: string;
+      changed_by: string;
+    }>;
+  }>;
+}
+
+function migrateV1ToV2(v1: ExportTicketJsonV1): ExportTicketJson {
+  return {
+    exportVersion: EXPORT_VERSION,
+    project: v1.project ?? "",
+    tickets: (v1.tasks ?? []).map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description ?? "",
+      status: t.status ?? "open",
+      type: t.type === "task" ? "chore" : (t.type ?? "chore"),
+      priority: t.priority ?? "medium",
+      estimate: t.estimate ?? null,
+      actual: t.actual ?? null,
+      tags: t.tags ?? [],
+      assignee: t.assignee ?? null,
+      parent_ticket_id: t.parent_task_id ?? null,
+      created_at: t.created_at,
+      updated_at: t.updated_at,
+      completed_at: t.completed_at ?? null,
+      metadata: t.metadata ?? {},
+      comments: t.comments ?? [],
+      links: (t.links ?? []).map((l) => ({
+        id: l.id,
+        source_ticket_id: l.source_task_id,
+        target_ticket_id: l.target_task_id,
+        link_type: l.link_type,
+        created_at: l.created_at,
+      })),
+      history: t.history ?? [],
+    })),
+  };
+}
+
+// Normalize a parsed export payload to v2 shape. Throws on unknown/unsupported
+// versions. Detects v1 either by `exportVersion: 1` or by the presence of a
+// top-level `tasks` array (early exports omitted exportVersion entirely).
+export function normalizeExportPayload(payload: unknown): ExportTicketJson {
+  if (payload == null || typeof payload !== "object") {
+    throw new Error("Export payload is not a JSON object.");
+  }
+  const p = payload as Record<string, unknown>;
+  const version = typeof p.exportVersion === "number" ? p.exportVersion : undefined;
+
+  if (version === 2) {
+    return p as unknown as ExportTicketJson;
+  }
+  if (version === 1 || (version === undefined && Array.isArray(p.tasks))) {
+    return migrateV1ToV2(p as unknown as ExportTicketJsonV1);
+  }
+  if (version === undefined) {
+    throw new Error(
+      "Export payload is missing exportVersion and has no recognizable shape.",
+    );
+  }
+  throw new Error(
+    `Unsupported export version: ${version}. Supported versions: ${SUPPORTED_EXPORT_VERSIONS.join(", ")}.`,
+  );
+}
+
+export function importTicketsIntoDb(
   projectDb: Database.Database,
-  tasks: ExportTaskJson["tasks"],
+  tickets: ExportTicketJson["tickets"],
 ): { inserted: number; warnings: string[] } {
   const warnings: string[] = [];
 
   // Validate all IDs before inserting anything
-  for (const task of tasks) {
-    if (!isValidUlid(task.id)) {
+  for (const ticket of tickets) {
+    if (!isValidUlid(ticket.id)) {
       throw new Error(
-        `Invalid task ID: "${task.id}". IDs must be valid ULIDs.`,
+        `Invalid ticket ID: "${ticket.id}". IDs must be valid ULIDs.`,
       );
     }
-    if (task.parent_task_id && !isValidUlid(task.parent_task_id)) {
+    if (ticket.parent_ticket_id && !isValidUlid(ticket.parent_ticket_id)) {
       throw new Error(
-        `Invalid parent_task_id: "${task.parent_task_id}". IDs must be valid ULIDs.`,
+        `Invalid parent_ticket_id: "${ticket.parent_ticket_id}". IDs must be valid ULIDs.`,
       );
     }
-    for (const c of task.comments ?? []) {
+    for (const c of ticket.comments ?? []) {
       if (c.id && !isValidUlid(c.id)) {
         throw new Error(
           `Invalid comment ID: "${c.id}". IDs must be valid ULIDs.`,
         );
       }
     }
-    for (const l of task.links ?? []) {
+    for (const l of ticket.links ?? []) {
       if (l.id && !isValidUlid(l.id)) {
         throw new Error(
           `Invalid link ID: "${l.id}". IDs must be valid ULIDs.`,
         );
       }
-      if (!isValidUlid(l.source_task_id)) {
+      if (!isValidUlid(l.source_ticket_id)) {
         throw new Error(
-          `Invalid link source_task_id: "${l.source_task_id}". IDs must be valid ULIDs.`,
+          `Invalid link source_ticket_id: "${l.source_ticket_id}". IDs must be valid ULIDs.`,
         );
       }
-      if (!isValidUlid(l.target_task_id)) {
+      if (!isValidUlid(l.target_ticket_id)) {
         throw new Error(
-          `Invalid link target_task_id: "${l.target_task_id}". IDs must be valid ULIDs.`,
+          `Invalid link target_ticket_id: "${l.target_ticket_id}". IDs must be valid ULIDs.`,
         );
       }
     }
-    for (const h of task.history ?? []) {
+    for (const h of ticket.history ?? []) {
       if (h.id && !isValidUlid(h.id)) {
         throw new Error(
           `Invalid history ID: "${h.id}". IDs must be valid ULIDs.`,
@@ -381,63 +488,63 @@ export function importTasksIntoDb(
     }
   }
 
-  const taskIds = new Set(tasks.map((t) => t.id));
+  const ticketIds = new Set(tickets.map((t) => t.id));
 
   // Topological insert: parents before children
   const inserted = new Set<string>();
-  const queue = [...tasks];
+  const queue = [...tickets];
   let passes = 0;
-  const maxPasses = tasks.length + 1;
+  const maxPasses = tickets.length + 1;
 
-  const insertTask = projectDb.prepare(
-    `INSERT OR IGNORE INTO tasks (id, title, description, status, type, priority, estimate, actual, tags, parent_task_id, assignee, created_at, updated_at, completed_at, metadata)
+  const insertTicket = projectDb.prepare(
+    `INSERT OR IGNORE INTO tickets (id, title, description, status, type, priority, estimate, actual, tags, parent_ticket_id, assignee, created_at, updated_at, completed_at, metadata)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertComment = projectDb.prepare(
-    `INSERT OR IGNORE INTO task_comments (id, task_id, content, created_at, created_by)
+    `INSERT OR IGNORE INTO ticket_comments (id, ticket_id, content, created_at, created_by)
      VALUES (?, ?, ?, ?, ?)`,
   );
   const insertLink = projectDb.prepare(
-    `INSERT OR IGNORE INTO task_links (id, source_task_id, target_task_id, link_type, created_at)
+    `INSERT OR IGNORE INTO ticket_links (id, source_ticket_id, target_ticket_id, link_type, created_at)
      VALUES (?, ?, ?, ?, ?)`,
   );
   const insertHistory = projectDb.prepare(
-    `INSERT OR IGNORE INTO task_history (id, task_id, field_changed, old_value, new_value, changed_at, changed_by)
+    `INSERT OR IGNORE INTO ticket_history (id, ticket_id, field_changed, old_value, new_value, changed_at, changed_by)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
 
   const runImport = projectDb.transaction(() => {
     while (queue.length > 0 && passes < maxPasses) {
       passes++;
-      const remaining: ExportTaskJson["tasks"] = [];
-      for (const task of queue) {
+      const remaining: ExportTicketJson["tickets"] = [];
+      for (const ticket of queue) {
         const parentInExport =
-          task.parent_task_id && taskIds.has(task.parent_task_id);
+          ticket.parent_ticket_id && ticketIds.has(ticket.parent_ticket_id);
         const parentReady =
-          !task.parent_task_id ||
+          !ticket.parent_ticket_id ||
           !parentInExport ||
-          inserted.has(task.parent_task_id);
+          inserted.has(ticket.parent_ticket_id);
         if (parentReady) {
-          insertTask.run(
-            task.id,
-            task.title,
-            task.description ?? "",
-            task.status ?? "open",
-            task.type ?? "task",
-            task.priority ?? "medium",
-            task.estimate ?? null,
-            task.actual ?? null,
-            JSON.stringify(task.tags ?? []),
-            parentInExport ? task.parent_task_id : null,
+          insertTicket.run(
+            ticket.id,
+            ticket.title,
+            ticket.description ?? "",
+            ticket.status ?? "open",
+            ticket.type ?? "chore",
+            ticket.priority ?? "medium",
+            ticket.estimate ?? null,
+            ticket.actual ?? null,
+            JSON.stringify(ticket.tags ?? []),
+            parentInExport ? ticket.parent_ticket_id : null,
             null, // assignee — not portable between instances
-            task.created_at,
-            task.updated_at,
-            task.completed_at ?? null,
-            JSON.stringify(task.metadata ?? {}),
+            ticket.created_at,
+            ticket.updated_at,
+            ticket.completed_at ?? null,
+            JSON.stringify(ticket.metadata ?? {}),
           );
-          inserted.add(task.id);
+          inserted.add(ticket.id);
         } else {
-          remaining.push(task);
+          remaining.push(ticket);
         }
       }
       queue.length = 0;
@@ -446,40 +553,40 @@ export function importTasksIntoDb(
 
     if (queue.length > 0) {
       warnings.push(
-        `${queue.length} task(s) could not be imported due to unresolved parent references.`,
+        `${queue.length} ticket(s) could not be imported due to unresolved parent references.`,
       );
     }
 
-    // Insert comments, links, and history for all inserted tasks
-    for (const task of tasks) {
-      if (!inserted.has(task.id)) continue;
+    // Insert comments, links, and history for all inserted tickets
+    for (const ticket of tickets) {
+      if (!inserted.has(ticket.id)) continue;
 
-      for (const comment of task.comments ?? []) {
+      for (const comment of ticket.comments ?? []) {
         insertComment.run(
           comment.id || ulid(),
-          task.id,
+          ticket.id,
           comment.content,
           comment.created_at,
           comment.created_by ?? "imported",
         );
       }
 
-      for (const link of task.links ?? []) {
-        if (inserted.has(link.source_task_id) && inserted.has(link.target_task_id)) {
+      for (const link of ticket.links ?? []) {
+        if (inserted.has(link.source_ticket_id) && inserted.has(link.target_ticket_id)) {
           insertLink.run(
             link.id || ulid(),
-            link.source_task_id,
-            link.target_task_id,
+            link.source_ticket_id,
+            link.target_ticket_id,
             link.link_type,
             link.created_at,
           );
         }
       }
 
-      for (const entry of task.history ?? []) {
+      for (const entry of ticket.history ?? []) {
         insertHistory.run(
           entry.id || ulid(),
-          task.id,
+          ticket.id,
           entry.field_changed,
           entry.old_value ?? null,
           entry.new_value ?? null,
@@ -536,24 +643,32 @@ export async function importFromZip(
     }
 
     const entryNames = Object.keys(entries);
-    const taskFiles = entryNames.filter(
-      (n) => n.startsWith("tasks-") && n.endsWith(".json"),
+    // Accept both v2 (`tickets-*.json`) and v1 (`tasks-*.json`) data files.
+    const ticketFiles = entryNames.filter(
+      (n) =>
+        (n.startsWith("tickets-") || n.startsWith("tasks-")) &&
+        n.endsWith(".json"),
     );
 
-    if (taskFiles.length === 0) {
+    if (ticketFiles.length === 0) {
       throw new Error(
-        "No task data files (tasks-*.json) found in the archive.",
+        "No ticket data files (tickets-*.json or tasks-*.json) found in the archive.",
       );
     }
 
     const results: ImportResult[] = [];
 
-    for (const taskFile of taskFiles) {
-      const buf = await zip.entryData(taskFile);
-      const taskData = JSON.parse(buf.toString("utf-8")) as ExportTaskJson;
+    for (const ticketFile of ticketFiles) {
+      const buf = await zip.entryData(ticketFile);
+      const rawPayload = JSON.parse(buf.toString("utf-8"));
+      const ticketData = normalizeExportPayload(rawPayload);
 
       const projectName =
-        taskData.project || taskFile.replace(/^tasks-/, "").replace(/\.json$/, "");
+        ticketData.project ||
+        ticketFile
+          .replace(/^tickets-/, "")
+          .replace(/^tasks-/, "")
+          .replace(/\.json$/, "");
 
       let projectId: string;
       let resolvedName: string;
@@ -568,15 +683,15 @@ export async function importFromZip(
       }
 
       const projectDb = getProjectDb(projectId);
-      const { inserted, warnings } = importTasksIntoDb(
+      const { inserted, warnings } = importTicketsIntoDb(
         projectDb,
-        taskData.tasks ?? [],
+        ticketData.tickets ?? [],
       );
 
       results.push({
         projectName: resolvedName,
         projectId,
-        taskCount: inserted,
+        ticketCount: inserted,
         warnings,
       });
     }
