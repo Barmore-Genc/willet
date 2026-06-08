@@ -8,6 +8,7 @@ import { getCurrentUser } from "../context.js";
 import {
   embed,
   embeddingToBuffer,
+  type EmbeddingTransform,
 } from "../embeddings/local.js";
 import { applySchema, applyRegistrySchema } from "./schema.js";
 import type {
@@ -238,7 +239,8 @@ export async function embedTicketContent(
     description: string;
     tags: string[];
     comments: string[];
-  }
+  },
+  transform?: EmbeddingTransform
 ): Promise<void> {
   const content = buildEmbeddingContent(
     fields.title,
@@ -254,7 +256,7 @@ export async function embedTicketContent(
 
   if (existing && existing.content_hash === contentHash) return;
 
-  const embedding = await embed(content);
+  const embedding = await embed(content, transform);
   const buf = embeddingToBuffer(embedding);
   const rowid = BigInt(
     (db.prepare("SELECT rowid FROM tickets WHERE id = ?").get(ticketId) as { rowid: number }).rowid
@@ -272,14 +274,23 @@ export async function embedTicketContent(
   })();
 }
 
-async function embedTicket(db: Database.Database, ticket: Ticket): Promise<void> {
+async function embedTicket(
+  db: Database.Database,
+  ticket: Ticket,
+  transform?: EmbeddingTransform
+): Promise<void> {
   const comments = getComments(db, ticket.id);
-  await embedTicketContent(db, ticket.id, {
-    title: ticket.title,
-    description: ticket.description,
-    tags: ticket.tags,
-    comments: comments.map((c) => c.content),
-  });
+  await embedTicketContent(
+    db,
+    ticket.id,
+    {
+      title: ticket.title,
+      description: ticket.description,
+      tags: ticket.tags,
+      comments: comments.map((c) => c.content),
+    },
+    transform
+  );
 }
 
 // --- Ticket CRUD ---
@@ -300,7 +311,8 @@ export async function createTicket(
     metadata?: Record<string, unknown>;
     links?: Array<{ target_ticket_id: string; link_type: LinkType }>;
     initial_comment?: string;
-  }
+  },
+  transform?: EmbeddingTransform
 ): Promise<Ticket & { links?: TicketLink[]; comment?: TicketComment }> {
   const now = new Date().toISOString();
   const id = ulid();
@@ -342,9 +354,9 @@ export async function createTicket(
   }
 
   if (input.initial_comment) {
-    result.comment = await addComment(db, id, input.initial_comment);
+    result.comment = await addComment(db, id, input.initial_comment, transform);
   } else {
-    await embedTicket(db, ticket);
+    await embedTicket(db, ticket, transform);
   }
 
   return result;
@@ -374,7 +386,8 @@ export async function updateTicket(
     status?: Status;
     completed_at?: string | null;
     actual?: string | null;
-  }
+  },
+  transform?: EmbeddingTransform
 ): Promise<Ticket> {
   const current = getTicketById(db, input.ticket_id);
   if (!current) throw new Error(`Ticket not found: ${input.ticket_id}`);
@@ -426,7 +439,7 @@ export async function updateTicket(
   }
 
   const updated = getTicketById(db, input.ticket_id)!;
-  if (needsReembed) await embedTicket(db, updated);
+  if (needsReembed) await embedTicket(db, updated, transform);
   return updated;
 }
 
@@ -488,7 +501,8 @@ export async function reopenTicket(db: Database.Database, ticketId: string): Pro
 export async function addComment(
   db: Database.Database,
   ticketId: string,
-  content: string
+  content: string,
+  transform?: EmbeddingTransform
 ): Promise<TicketComment> {
   const ticket = getTicketById(db, ticketId);
   if (!ticket) throw new Error(`Ticket not found: ${ticketId}`);
@@ -505,7 +519,7 @@ export async function addComment(
     "INSERT INTO ticket_comments (id, ticket_id, content, created_at, created_by) VALUES (?, ?, ?, ?, ?)"
   ).run(comment.id, comment.ticket_id, comment.content, comment.created_at, comment.created_by);
 
-  await embedTicket(db, ticket);
+  await embedTicket(db, ticket, transform);
 
   return comment;
 }
@@ -714,7 +728,8 @@ export async function searchTickets(
     type?: TicketType | TicketType[];
     priority?: Priority | Priority[];
     limit?: number;
-  } = {}
+  } = {},
+  transform?: EmbeddingTransform
 ): Promise<Array<Ticket & { score: number }>> {
   const mode = opts.mode ?? "hybrid";
   const limit = opts.limit ?? 20;
@@ -770,7 +785,7 @@ export async function searchTickets(
   async function knnSearch(
     kLimit: number
   ): Promise<Array<{ id: string; distance: number }>> {
-    const queryEmbedding = await embed(query);
+    const queryEmbedding = await embed(query, transform);
     const queryBuf = embeddingToBuffer(queryEmbedding);
     return db
       .prepare(

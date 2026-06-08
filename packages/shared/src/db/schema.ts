@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
-import { EMBEDDING_DIM } from "../embeddings/local.js";
+import { getEmbeddingDim } from "../embeddings/local.js";
 
 export function applySchema(db: Database.Database): void {
   sqliteVec.load(db);
@@ -185,7 +185,7 @@ export function applySchema(db: Database.Database): void {
 
   if (!vecExists) {
     db.exec(
-      `CREATE VIRTUAL TABLE ticket_vec USING vec0(embedding float[${EMBEDDING_DIM}] distance_metric=cosine)`
+      `CREATE VIRTUAL TABLE ticket_vec USING vec0(embedding float[${getEmbeddingDim()}] distance_metric=cosine)`
     );
 
     db.exec(`

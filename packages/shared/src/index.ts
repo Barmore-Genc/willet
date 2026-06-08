@@ -9,7 +9,13 @@ import { registerVizTools } from "./tools/viz.js";
 import { buildInstructions, registerResources } from "./instructions.js";
 import type { ToolOptions } from "./models/types.js";
 
-export { initEmbeddings, setEmbedder, EMBEDDING_DIM } from "./embeddings/local.js";
+export {
+  initEmbeddings,
+  setEmbedder,
+  EMBEDDING_DIM,
+  getEmbeddingDim,
+} from "./embeddings/local.js";
+export type { EmbeddingTransform, InitEmbeddingsOptions } from "./embeddings/local.js";
 export { closeAll } from "./db/queries.js";
 export { getCurrentUser, runAsUser } from "./context.js";
 export type { ToolOptions } from "./models/types.js";
