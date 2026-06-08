@@ -5,6 +5,7 @@ import archiver from "archiver";
 import StreamZip from "node-stream-zip";
 import { ulid } from "ulid";
 import type Database from "better-sqlite3";
+import { embedTicketContent } from "./db/queries.js";
 import type {
   Ticket,
   TicketComment,
@@ -437,10 +438,10 @@ export function normalizeExportPayload(payload: unknown): ExportTicketJson {
   );
 }
 
-export function importTicketsIntoDb(
+export async function importTicketsIntoDb(
   projectDb: Database.Database,
   tickets: ExportTicketJson["tickets"],
-): { inserted: number; warnings: string[] } {
+): Promise<{ inserted: number; warnings: string[] }> {
   const warnings: string[] = [];
 
   // Validate all IDs before inserting anything
@@ -599,6 +600,22 @@ export function importTicketsIntoDb(
 
   runImport();
 
+  // Embeddings can't be generated inside the synchronous insert transaction
+  // (embed() is async), so embed each inserted ticket now that the rows exist.
+  // Raw inserts bypass createTicket/updateTicket, so without this the vector
+  // index stays empty and semantic search returns nothing for imported tickets.
+  // Content is built from the export data we just inserted, identically to
+  // create/update.
+  for (const ticket of tickets) {
+    if (!inserted.has(ticket.id)) continue;
+    await embedTicketContent(projectDb, ticket.id, {
+      title: ticket.title,
+      description: ticket.description ?? "",
+      tags: ticket.tags ?? [],
+      comments: (ticket.comments ?? []).map((c) => c.content),
+    });
+  }
+
   return { inserted: inserted.size, warnings };
 }
 
@@ -683,7 +700,7 @@ export async function importFromZip(
       }
 
       const projectDb = getProjectDb(projectId);
-      const { inserted, warnings } = importTicketsIntoDb(
+      const { inserted, warnings } = await importTicketsIntoDb(
         projectDb,
         ticketData.tickets ?? [],
       );

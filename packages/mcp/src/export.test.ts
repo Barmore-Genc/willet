@@ -14,8 +14,15 @@ import {
   importTicketsIntoDb,
   importFromZip,
   normalizeExportPayload,
+  setEmbedder,
+  EMBEDDING_DIM,
 } from "@willet/shared";
 import type { ExportTicketJson } from "@willet/shared";
+
+// Import generates real embeddings via embed(); stub the embedder so tests
+// don't load an ONNX model. A deterministic non-zero vector is enough to
+// populate ticket_embeddings / ticket_vec and assert they get written.
+setEmbedder(async () => new Float32Array(EMBEDDING_DIM).fill(0.1));
 
 function createTestDb(): Database.Database {
   const db = new Database(":memory:");
@@ -215,7 +222,7 @@ describe("ticketsToJSON", () => {
 });
 
 describe("importTicketsIntoDb", () => {
-  it("should import tasks with all related data", () => {
+  it("should import tasks with all related data", async () => {
     const db = createTestDb();
     const tasks: ExportTicketJson["tickets"] = [
       {
@@ -256,9 +263,21 @@ describe("importTicketsIntoDb", () => {
       },
     ];
 
-    const { inserted, warnings } = importTicketsIntoDb(db, tasks);
+    const { inserted, warnings } = await importTicketsIntoDb(db, tasks);
     expect(inserted).toBe(1);
     expect(warnings).toHaveLength(0);
+
+    // Verify the ticket got an embedding (raw inserts bypass create/update, so
+    // import must generate it explicitly) — both the blob table and the vec
+    // index semantic search actually queries.
+    const embeddingCount = (
+      db.prepare("SELECT COUNT(*) AS c FROM ticket_embeddings").get() as { c: number }
+    ).c;
+    expect(embeddingCount).toBe(1);
+    const vecCount = (
+      db.prepare("SELECT COUNT(*) AS c FROM ticket_vec").get() as { c: number }
+    ).c;
+    expect(vecCount).toBe(1);
 
     // Verify task
     const row = db.prepare("SELECT * FROM tickets WHERE id = ?").get(tasks[0].id) as Record<string, unknown>;
@@ -281,7 +300,7 @@ describe("importTicketsIntoDb", () => {
     db.close();
   });
 
-  it("should handle parent-child relationships in topological order", () => {
+  it("should handle parent-child relationships in topological order", async () => {
     const db = createTestDb();
     // Put child before parent in array to test topological sorting
     const tasks: ExportTicketJson["tickets"] = [
@@ -327,7 +346,7 @@ describe("importTicketsIntoDb", () => {
       },
     ];
 
-    const { inserted } = importTicketsIntoDb(db, tasks);
+    const { inserted } = await importTicketsIntoDb(db, tasks);
     expect(inserted).toBe(2);
 
     const child = db.prepare("SELECT * FROM tickets WHERE id = ?").get("01JCH001AAAAAAAAAAAAAAAA00") as Record<string, unknown>;
@@ -336,7 +355,7 @@ describe("importTicketsIntoDb", () => {
     db.close();
   });
 
-  it("should handle links between tasks", () => {
+  it("should handle links between tasks", async () => {
     const db = createTestDb();
     const tasks: ExportTicketJson["tickets"] = [
       {
@@ -389,7 +408,7 @@ describe("importTicketsIntoDb", () => {
       },
     ];
 
-    const { inserted } = importTicketsIntoDb(db, tasks);
+    const { inserted } = await importTicketsIntoDb(db, tasks);
     expect(inserted).toBe(2);
 
     const links = db.prepare("SELECT * FROM ticket_links").all() as Array<Record<string, unknown>>;
@@ -401,7 +420,7 @@ describe("importTicketsIntoDb", () => {
     db.close();
   });
 
-  it("should reject invalid ULIDs", () => {
+  it("should reject invalid ULIDs", async () => {
     const db = createTestDb();
     const tasks: ExportTicketJson["tickets"] = [
       {
@@ -426,7 +445,7 @@ describe("importTicketsIntoDb", () => {
       },
     ];
 
-    expect(() => importTicketsIntoDb(db, tasks)).toThrow("Invalid ticket ID");
+    await expect(importTicketsIntoDb(db, tasks)).rejects.toThrow("Invalid ticket ID");
     db.close();
   });
 });
@@ -624,13 +643,24 @@ describe("full export/import round-trip", () => {
 
     // Import into a fresh database
     const targetDb = createTestDb();
-    const { inserted, warnings } = importTicketsIntoDb(targetDb, taskJson.tickets);
+    const { inserted, warnings } = await importTicketsIntoDb(targetDb, taskJson.tickets);
     expect(inserted).toBe(4);
     expect(warnings).toHaveLength(0);
 
     // Verify all tasks were imported
     const importedTasks = targetDb.prepare("SELECT * FROM tickets ORDER BY created_at").all() as Array<Record<string, unknown>>;
     expect(importedTasks).toHaveLength(4);
+
+    // Every imported ticket should have an embedding row — export drops the
+    // vectors, so import has to regenerate them or semantic search stays empty.
+    const embeddingCount = (
+      targetDb.prepare("SELECT COUNT(*) AS c FROM ticket_embeddings").get() as { c: number }
+    ).c;
+    expect(embeddingCount).toBe(4);
+    const vecCount = (
+      targetDb.prepare("SELECT COUNT(*) AS c FROM ticket_vec").get() as { c: number }
+    ).c;
+    expect(vecCount).toBe(4);
 
     // Verify parent task
     const importedParent = importedTasks.find((t) => t.id === parentTask.id)!;
@@ -748,6 +778,17 @@ describe("full export/import round-trip", () => {
     const links = targetDb.prepare("SELECT * FROM ticket_links").all() as Array<Record<string, unknown>>;
     expect(links).toHaveLength(1);
     expect(links[0].link_type).toBe("relates_to");
+
+    // Importing through the full zip path must regenerate embeddings for both
+    // tickets so semantic search works on the imported project.
+    const embeddingCount = (
+      targetDb.prepare("SELECT COUNT(*) AS c FROM ticket_embeddings").get() as { c: number }
+    ).c;
+    expect(embeddingCount).toBe(2);
+    const vecCount = (
+      targetDb.prepare("SELECT COUNT(*) AS c FROM ticket_vec").get() as { c: number }
+    ).c;
+    expect(vecCount).toBe(2);
 
     sourceDb.close();
     targetDb.close();

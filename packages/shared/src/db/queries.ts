@@ -209,34 +209,77 @@ function rowToTicket(row: TicketRow): Ticket {
 
 // --- Embedding helper ---
 
-async function embedTicket(db: Database.Database, ticket: Ticket): Promise<void> {
-  const comments = getComments(db, ticket.id);
-  const commentText = comments.map((c) => c.content).join("\n");
-  const content = `${ticket.title}\n${ticket.description}\n${ticket.tags.join(", ")}${commentText ? `\n${commentText}` : ""}`;
+/** Build the text that gets embedded for a ticket: title, description, tags,
+ * then each comment on its own line. Kept in one place so every path that
+ * embeds a ticket (create, update, import) produces an identical vector. */
+function buildEmbeddingContent(
+  title: string,
+  description: string,
+  tags: string[],
+  commentContents: string[]
+): string {
+  const commentText = commentContents.join("\n");
+  return `${title}\n${description}\n${tags.join(", ")}${commentText ? `\n${commentText}` : ""}`;
+}
+
+/**
+ * Embed the given content for `ticketId` and persist it to `ticket_embeddings`
+ * and `ticket_vec`. The ticket row must already exist (we look up its rowid).
+ * No-op if an embedding for identical content already exists. Exported so bulk
+ * import — which inserts rows with raw SQL, bypassing
+ * {@link createTicket}/{@link updateTicket} — can generate embeddings inline
+ * from the content it is inserting, using the same construction as create/update.
+ */
+export async function embedTicketContent(
+  db: Database.Database,
+  ticketId: string,
+  fields: {
+    title: string;
+    description: string;
+    tags: string[];
+    comments: string[];
+  }
+): Promise<void> {
+  const content = buildEmbeddingContent(
+    fields.title,
+    fields.description,
+    fields.tags,
+    fields.comments
+  );
   const contentHash = createHash("sha256").update(content).digest("hex");
 
   const existing = db
     .prepare("SELECT content_hash FROM ticket_embeddings WHERE ticket_id = ?")
-    .get(ticket.id) as { content_hash: string } | undefined;
+    .get(ticketId) as { content_hash: string } | undefined;
 
   if (existing && existing.content_hash === contentHash) return;
 
   const embedding = await embed(content);
   const buf = embeddingToBuffer(embedding);
   const rowid = BigInt(
-    (db.prepare("SELECT rowid FROM tickets WHERE id = ?").get(ticket.id) as { rowid: number }).rowid
+    (db.prepare("SELECT rowid FROM tickets WHERE id = ?").get(ticketId) as { rowid: number }).rowid
   );
 
   db.transaction(() => {
     db.prepare(
       "INSERT OR REPLACE INTO ticket_embeddings (ticket_id, embedding, content_hash) VALUES (?, ?, ?)"
-    ).run(ticket.id, buf, contentHash);
+    ).run(ticketId, buf, contentHash);
     db.prepare("DELETE FROM ticket_vec WHERE rowid = ?").run(rowid);
     db.prepare("INSERT INTO ticket_vec(rowid, embedding) VALUES (?, ?)").run(
       rowid,
       buf
     );
   })();
+}
+
+async function embedTicket(db: Database.Database, ticket: Ticket): Promise<void> {
+  const comments = getComments(db, ticket.id);
+  await embedTicketContent(db, ticket.id, {
+    title: ticket.title,
+    description: ticket.description,
+    tags: ticket.tags,
+    comments: comments.map((c) => c.content),
+  });
 }
 
 // --- Ticket CRUD ---
