@@ -268,11 +268,16 @@ describe("importTicketsIntoDb", () => {
     expect(warnings).toHaveLength(0);
 
     // Verify the ticket got an embedding (raw inserts bypass create/update, so
-    // import must generate it explicitly)
+    // import must generate it explicitly) — both the blob table and the vec
+    // index semantic search actually queries.
     const embeddingCount = (
       db.prepare("SELECT COUNT(*) AS c FROM ticket_embeddings").get() as { c: number }
     ).c;
     expect(embeddingCount).toBe(1);
+    const vecCount = (
+      db.prepare("SELECT COUNT(*) AS c FROM ticket_vec").get() as { c: number }
+    ).c;
+    expect(vecCount).toBe(1);
 
     // Verify task
     const row = db.prepare("SELECT * FROM tickets WHERE id = ?").get(tasks[0].id) as Record<string, unknown>;
@@ -652,6 +657,10 @@ describe("full export/import round-trip", () => {
       targetDb.prepare("SELECT COUNT(*) AS c FROM ticket_embeddings").get() as { c: number }
     ).c;
     expect(embeddingCount).toBe(4);
+    const vecCount = (
+      targetDb.prepare("SELECT COUNT(*) AS c FROM ticket_vec").get() as { c: number }
+    ).c;
+    expect(vecCount).toBe(4);
 
     // Verify parent task
     const importedParent = importedTasks.find((t) => t.id === parentTask.id)!;
@@ -769,6 +778,17 @@ describe("full export/import round-trip", () => {
     const links = targetDb.prepare("SELECT * FROM ticket_links").all() as Array<Record<string, unknown>>;
     expect(links).toHaveLength(1);
     expect(links[0].link_type).toBe("relates_to");
+
+    // Importing through the full zip path must regenerate embeddings for both
+    // tickets so semantic search works on the imported project.
+    const embeddingCount = (
+      targetDb.prepare("SELECT COUNT(*) AS c FROM ticket_embeddings").get() as { c: number }
+    ).c;
+    expect(embeddingCount).toBe(2);
+    const vecCount = (
+      targetDb.prepare("SELECT COUNT(*) AS c FROM ticket_vec").get() as { c: number }
+    ).c;
+    expect(vecCount).toBe(2);
 
     sourceDb.close();
     targetDb.close();
