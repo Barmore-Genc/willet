@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
-import { EMBEDDING_DIM } from "../embeddings/local.js";
+import { getEmbeddingDim } from "../embeddings/local.js";
 
 export function applySchema(db: Database.Database): void {
   sqliteVec.load(db);
@@ -177,15 +177,15 @@ export function applySchema(db: Database.Database): void {
 
   // --- Vector search (sqlite-vec) ---
 
-  const vecExists = db
+  const vecRow = db
     .prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='ticket_vec'"
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='ticket_vec'"
     )
-    .get();
+    .get() as { sql: string } | undefined;
 
-  if (!vecExists) {
+  if (!vecRow) {
     db.exec(
-      `CREATE VIRTUAL TABLE ticket_vec USING vec0(embedding float[${EMBEDDING_DIM}] distance_metric=cosine)`
+      `CREATE VIRTUAL TABLE ticket_vec USING vec0(embedding float[${getEmbeddingDim()}] distance_metric=cosine)`
     );
 
     db.exec(`
@@ -210,6 +210,22 @@ export function applySchema(db: Database.Database): void {
           insert.run(BigInt(row.rowid), row.embedding);
         }
       })();
+    }
+  } else {
+    // The table is created once at the then-active dimension and never
+    // auto-migrated (that's the embedder's/operator's job — e.g. a re-embed
+    // import). If the active model's dimension no longer matches, vector search
+    // will error or silently misbehave, so surface a loud warning rather than
+    // failing opaquely later.
+    const existingDim = vecRow.sql.match(/float\[(\d+)\]/)?.[1];
+    const activeDim = getEmbeddingDim();
+    if (existingDim !== undefined && Number(existingDim) !== activeDim) {
+      console.error(
+        `Warning: ticket_vec was created with dimension ${existingDim} but the ` +
+          `active embedding model produces ${activeDim}. Vector search will fail ` +
+          `until the table is rebuilt (re-embed/re-import). The schema is not ` +
+          `auto-migrated.`
+      );
     }
   }
 }

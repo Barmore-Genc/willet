@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { initEmbeddings } from "./embeddings/local.js";
+import { initEmbeddings, type InitEmbeddingsOptions } from "./embeddings/local.js";
 import { closeAll } from "./db/queries.js";
 import { registerProjectTools } from "./tools/projects.js";
 import { registerTicketTools } from "./tools/tickets.js";
@@ -9,7 +9,14 @@ import { registerVizTools } from "./tools/viz.js";
 import { buildInstructions, registerResources } from "./instructions.js";
 import type { ToolOptions } from "./models/types.js";
 
-export { initEmbeddings, setEmbedder, EMBEDDING_DIM } from "./embeddings/local.js";
+export {
+  embed,
+  initEmbeddings,
+  setEmbedder,
+  EMBEDDING_DIM,
+  getEmbeddingDim,
+} from "./embeddings/local.js";
+export type { EmbeddingTransform, InitEmbeddingsOptions } from "./embeddings/local.js";
 export { closeAll } from "./db/queries.js";
 export { getCurrentUser, runAsUser } from "./context.js";
 export type { ToolOptions } from "./models/types.js";
@@ -27,7 +34,7 @@ export {
 export type { TicketWithExtras, ExportTicketJson, ImportResult } from "./export.js";
 export { runExportCli, runImportCli } from "./export-cli.js";
 
-export async function createServer(options?: { embeddingModel?: string; mode?: "local" | "selfhosted"; validAssignees?: string[] }): Promise<McpServer> {
+export async function createServer(options?: { embeddingModel?: string | InitEmbeddingsOptions; mode?: "local" | "selfhosted"; validAssignees?: string[] }): Promise<McpServer> {
   await initEmbeddings(options?.embeddingModel);
 
   const mode = options?.mode ?? "local";

@@ -6,6 +6,7 @@ import StreamZip from "node-stream-zip";
 import { ulid } from "ulid";
 import type Database from "better-sqlite3";
 import { embedTicketContent } from "./db/queries.js";
+import type { EmbeddingTransform } from "./embeddings/local.js";
 import type {
   Ticket,
   TicketComment,
@@ -441,6 +442,7 @@ export function normalizeExportPayload(payload: unknown): ExportTicketJson {
 export async function importTicketsIntoDb(
   projectDb: Database.Database,
   tickets: ExportTicketJson["tickets"],
+  transform?: EmbeddingTransform,
 ): Promise<{ inserted: number; warnings: string[] }> {
   const warnings: string[] = [];
 
@@ -613,7 +615,7 @@ export async function importTicketsIntoDb(
       description: ticket.description ?? "",
       tags: ticket.tags ?? [],
       comments: (ticket.comments ?? []).map((c) => c.content),
-    });
+    }, transform);
   }
 
   return { inserted: inserted.size, warnings };
@@ -624,6 +626,7 @@ export async function importFromZip(
   getProjectDb: (projectId: string) => Database.Database,
   initProject: (name: string, directory?: string) => { id: string; name: string },
   targetProjectId?: string,
+  transform?: EmbeddingTransform,
 ): Promise<ImportResult[]> {
   const { statSync } = await import("node:fs");
   const stat = statSync(zipPath);
@@ -703,6 +706,7 @@ export async function importFromZip(
       const { inserted, warnings } = await importTicketsIntoDb(
         projectDb,
         ticketData.tickets ?? [],
+        transform,
       );
 
       results.push({
