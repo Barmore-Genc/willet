@@ -248,7 +248,13 @@ export async function embedTicketContent(
     fields.tags,
     fields.comments
   );
-  const contentHash = createHash("sha256").update(content).digest("hex");
+  // Hash the post-transform text, not the raw fields: the embedding is produced
+  // from the transformed text, so the change-detection key must change when the
+  // transform does. Otherwise switching/removing a transform (e.g. an e5
+  // `passage:` prefix) would leave the early-return below skipping a needed
+  // re-embed and the stored vector stale.
+  const embedInput = transform ? transform(content) : content;
+  const contentHash = createHash("sha256").update(embedInput).digest("hex");
 
   const existing = db
     .prepare("SELECT content_hash FROM ticket_embeddings WHERE ticket_id = ?")
@@ -256,7 +262,7 @@ export async function embedTicketContent(
 
   if (existing && existing.content_hash === contentHash) return;
 
-  const embedding = await embed(content, transform);
+  const embedding = await embed(embedInput);
   const buf = embeddingToBuffer(embedding);
   const rowid = BigInt(
     (db.prepare("SELECT rowid FROM tickets WHERE id = ?").get(ticketId) as { rowid: number }).rowid
