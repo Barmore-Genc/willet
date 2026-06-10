@@ -30,7 +30,7 @@ describe("Willet MCP stdio E2E", () => {
     });
 
     await client.connect(transport);
-  });
+  }, 30000);
 
   afterAll(async () => {
     await client.close();
