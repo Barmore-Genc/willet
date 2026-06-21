@@ -8,7 +8,12 @@ import { loadCredentials } from "../credentials.js";
 export function resolveToken(
   env: NodeJS.ProcessEnv = process.env,
 ): string | null {
-  return envApiToken(env) ?? loadCredentials()?.token ?? null;
+  const apiToken = envApiToken(env);
+  if (apiToken) return apiToken;
+  // Stored logins are keyed by target, so this only ever returns a token minted
+  // for the deployment the CLI is currently pointed at — a cloud token is never
+  // sent to a self-hosted server, and vice versa.
+  return loadCredentials(resolveApiUrl(env))?.token ?? null;
 }
 
 export function formatIdentity(id: Identity): string {

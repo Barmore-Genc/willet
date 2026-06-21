@@ -86,7 +86,10 @@ export function createRestRouter(deps: RestDeps): Router {
     res.json(openapi);
   });
 
-  router.use(express.json());
+  // The MCP app's global express.json() handles `application/json`; this catches
+  // every other Content-Type as raw text (default 100kb limit) so `parseBody`
+  // can JSON.parse it — valid JSON with the wrong Content-Type still works.
+  router.use(express.text({ type: () => true }));
 
   const auth = makeAuth(deps.provider);
 

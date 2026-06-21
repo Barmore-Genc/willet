@@ -4,9 +4,10 @@
 // revoke tokens across all machines the user uses the dashboard.
 
 import { clearCredentials } from "../credentials.js";
+import { resolveApiUrl } from "../config.js";
 
-export function logoutCommand(): number {
-  clearCredentials();
+export function logoutCommand(env: NodeJS.ProcessEnv = process.env): number {
+  clearCredentials(resolveApiUrl(env));
   console.log("Logged out. Local credentials cleared.");
   console.log(
     "To revoke tokens everywhere, manage them in the dashboard.",

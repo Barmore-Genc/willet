@@ -3,7 +3,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApiClient, type FetchLike, type Identity } from "./api.js";
-import { whoamiCommand, formatIdentity } from "./commands/whoami.js";
+import { whoamiCommand, formatIdentity, resolveToken } from "./commands/whoami.js";
+import { saveCredentials } from "./credentials.js";
+import { DEFAULT_API_URL } from "./config.js";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -29,6 +31,48 @@ describe("formatIdentity", () => {
       token: { ...identity.token, projectId: null },
     });
     expect(out).not.toContain("project=");
+  });
+});
+
+describe("resolveToken", () => {
+  function withHome<T>(fn: (home: string) => T): T {
+    const home = mkdtempSync(join(tmpdir(), "willet-cli-token-"));
+    const origHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      return fn(home);
+    } finally {
+      if (origHome === undefined) delete process.env.HOME;
+      else process.env.HOME = origHome;
+      rmSync(home, { recursive: true, force: true });
+    }
+  }
+
+  const future = new Date(Date.now() + 3_600_000).toISOString();
+
+  it("returns the stored token when the configured URL matches", () => {
+    withHome((home) => {
+      saveCredentials({ token: "wlt_stored", expiresAt: future, apiUrl: DEFAULT_API_URL }, home);
+      expect(resolveToken({})).toBe("wlt_stored");
+    });
+  });
+
+  it("does not return the stored token when the API URL was repointed", () => {
+    withHome((home) => {
+      saveCredentials({ token: "wlt_stored", expiresAt: future, apiUrl: DEFAULT_API_URL }, home);
+      // Repointing at a self-hosted server without WILLET_API_TOKEN must not leak
+      // the cloud token to that server.
+      expect(resolveToken({ WILLET_API_URL: "https://willet.internal.example" })).toBeNull();
+    });
+  });
+
+  it("prefers the env token over a mismatched stored token", () => {
+    withHome((home) => {
+      saveCredentials({ token: "wlt_stored", expiresAt: future, apiUrl: DEFAULT_API_URL }, home);
+      expect(
+        resolveToken({ WILLET_API_TOKEN: "wlt_env", WILLET_API_URL: "https://willet.internal.example" }),
+      ).toBe("wlt_env");
+    });
   });
 });
 

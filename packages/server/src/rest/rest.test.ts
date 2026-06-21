@@ -203,6 +203,42 @@ describe("Willet REST API", () => {
     expect(del.id).toBe(ticket.id);
   });
 
+  it("accepts valid JSON even with a non-JSON Content-Type", async () => {
+    const projRes = await fetch(`${baseUrl}/api/v1/organizations/local/projects`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ name: "Content-Type Test" }),
+    });
+    const proj = (await projRes.json()) as { id: string };
+
+    const res = await fetch(`${baseUrl}/api/v1/projects/${proj.id}/tickets`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${TEST_SECRET}`, "Content-Type": "text/plain" },
+      body: JSON.stringify({ title: "Sent as text/plain" }),
+    });
+    expect(res.status).toBe(201);
+    const ticket = (await res.json()) as { title: string };
+    expect(ticket.title).toBe("Sent as text/plain");
+  });
+
+  it("returns 400 with a clear error for an invalid JSON body", async () => {
+    const projRes = await fetch(`${baseUrl}/api/v1/organizations/local/projects`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ name: "Invalid JSON Test" }),
+    });
+    const proj = (await projRes.json()) as { id: string };
+
+    const res = await fetch(`${baseUrl}/api/v1/projects/${proj.id}/tickets`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${TEST_SECRET}`, "Content-Type": "text/plain" },
+      body: "{not valid json",
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("valid JSON");
+  });
+
   it("returns 404 for a ticket in a nonexistent project", async () => {
     const res = await fetch(`${baseUrl}/api/v1/projects/nonexistent/tickets`, { headers: authHeaders });
     expect(res.status).toBe(404);

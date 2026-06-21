@@ -4,7 +4,7 @@ import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import { ApiClient, type FetchLike } from "./api.js";
 import { loginCommand } from "./commands/login.js";
-import { configDir } from "./credentials.js";
+import { configDir, credentialSlug } from "./credentials.js";
 
 // loginCommand persists via saveCredentials(), which uses homedir(). Redirect
 // HOME to a temp dir so the test never writes to the real home.
@@ -90,7 +90,12 @@ describe("loginCommand", () => {
 
     expect(code).toBe(0);
     expect(meAuth).toBe("Bearer minted-token");
-    expect(existsSync(join(configDir(home), "credentials.json"))).toBe(true);
+    const tokenFile = join(
+      configDir(home),
+      "credentials",
+      `${credentialSlug("https://x.test")}.token`,
+    );
+    expect(existsSync(tokenFile)).toBe(true);
     expect(log.mock.calls.flat().join("\n")).toContain("Logged in as Ada");
   });
 

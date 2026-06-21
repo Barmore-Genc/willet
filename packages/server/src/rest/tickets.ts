@@ -43,20 +43,13 @@ import {
   type ToolOptions,
 } from "@willet/shared";
 import { z } from "zod";
-import type { Request } from "express";
 import { wrap, sendError } from "./router.js";
-import { asArray, asString, asBool, asInt, parseBody } from "./params.js";
+import { asArray, asString, asBool, asInt, parseBody, param } from "./params.js";
 import { renderBoard, renderDependencyGraphText } from "./render.js";
 
 type ProjectDb = ReturnType<typeof getProjectDb>;
 
 const TOOL_OPTIONS: ToolOptions = { mode: "selfhosted" };
-
-/** Read a path param as a single string (Express 5 types params as string | string[]). */
-function param(req: Request, name: string): string {
-  const value = req.params[name];
-  return Array.isArray(value) ? value[0] : value;
-}
 
 /** Resolve a project's DB handle, or `null` if the project does not exist. */
 function resolveDb(projectId: string): ProjectDb | null {
