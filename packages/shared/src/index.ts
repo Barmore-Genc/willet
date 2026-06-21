@@ -19,6 +19,64 @@ export {
 export type { EmbeddingTransform, InitEmbeddingsOptions } from "./embeddings/local.js";
 export { closeAll } from "./db/queries.js";
 export { getCurrentUser, runAsUser } from "./context.js";
+
+// Query functions, re-exported as a library so other packages (e.g. the HTTP
+// server's REST API) can call them directly instead of reaching into dist paths.
+export {
+  getProjectDb,
+  getProjectById,
+  listProjects,
+  initProject,
+  createTicket,
+  getTicketById,
+  updateTicket,
+  deleteTicket,
+  startTicket,
+  completeTicket,
+  cancelTicket,
+  reopenTicket,
+  addComment,
+  getComments,
+  linkTickets,
+  unlinkTickets,
+  getLinks,
+  getHistory,
+  listTickets,
+  searchTickets,
+  getTicketGraph,
+  getProjectStats,
+  listTags,
+} from "./db/queries.js";
+
+export {
+  projectTicket,
+  projectTickets,
+  StatusSchema,
+  TicketTypeSchema,
+  PrioritySchema,
+  LinkTypeSchema,
+  SearchModeSchema,
+  SortFieldSchema,
+  SortDirectionSchema,
+  GroupBySchema,
+  VerbositySchema,
+} from "./models/types.js";
+export type {
+  Project,
+  Ticket,
+  TicketHistory,
+  TicketLink,
+  TicketComment,
+  Status,
+  TicketType,
+  Priority,
+  LinkType,
+  SearchMode,
+  SortField,
+  SortDirection,
+  GroupBy,
+  Verbosity,
+} from "./models/types.js";
 export type { ToolOptions } from "./models/types.js";
 export {
   gatherTicketData,
