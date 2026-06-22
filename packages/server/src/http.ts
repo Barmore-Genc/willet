@@ -6,9 +6,17 @@ import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { WilletAuthProvider } from "./auth/provider.js";
 import { runAsUser } from "@willet/shared";
+import { createRestRouter } from "./rest/router.js";
 import type { WilletConfig } from "./config.js";
+
+/** Read the authenticated username set by the MCP bearer-auth middleware. */
+function authUsername(req: express.Request): string {
+  const auth = (req as express.Request & { auth?: AuthInfo }).auth;
+  return (auth?.extra?.username as string) ?? "local";
+}
 
 export interface HttpServerHandle {
   server: ReturnType<import("express").Express["listen"]>;
@@ -91,6 +99,10 @@ export async function startHttpServer(
     }
   );
 
+  // REST API (mounted on the same app). Has its own bearer-secret auth and
+  // body parsing; the MCP routes below are untouched.
+  app.use("/api/v1", createRestRouter({ provider }));
+
   // Auth middleware for MCP endpoints
   const authMiddleware = requireBearerAuth({
     verifier: provider,
@@ -102,7 +114,7 @@ export async function startHttpServer(
 
   // MCP POST endpoint
   app.post("/mcp", authMiddleware, async (req, res) => {
-    const username = (req.auth?.extra?.username as string) ?? "local";
+    const username = authUsername(req);
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
     try {
@@ -155,7 +167,7 @@ export async function startHttpServer(
 
   // MCP GET endpoint (SSE streams)
   app.get("/mcp", authMiddleware, async (req, res) => {
-    const username = (req.auth?.extra?.username as string) ?? "local";
+    const username = authUsername(req);
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
     if (!sessionId || !transports.has(sessionId)) {

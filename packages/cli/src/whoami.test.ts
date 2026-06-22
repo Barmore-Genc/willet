@@ -1,0 +1,128 @@
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ApiClient, type FetchLike, type Identity } from "./api.js";
+import { whoamiCommand, formatIdentity, resolveToken } from "./commands/whoami.js";
+import { saveCredentials } from "./credentials.js";
+import { DEFAULT_API_URL } from "./config.js";
+
+afterEach(() => vi.restoreAllMocks());
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+const identity: Identity = {
+  user: { id: "u1", email: "a@b.test", name: "Ada" },
+  token: { scope: "project", accessLevel: "read", projectId: "p1" },
+};
+
+describe("formatIdentity", () => {
+  it("includes project when present", () => {
+    expect(formatIdentity(identity)).toContain("project=p1");
+  });
+  it("omits project when null", () => {
+    const out = formatIdentity({
+      ...identity,
+      token: { ...identity.token, projectId: null },
+    });
+    expect(out).not.toContain("project=");
+  });
+});
+
+describe("resolveToken", () => {
+  function withHome<T>(fn: (home: string) => T): T {
+    const home = mkdtempSync(join(tmpdir(), "willet-cli-token-"));
+    const origHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      return fn(home);
+    } finally {
+      if (origHome === undefined) delete process.env.HOME;
+      else process.env.HOME = origHome;
+      rmSync(home, { recursive: true, force: true });
+    }
+  }
+
+  const future = new Date(Date.now() + 3_600_000).toISOString();
+
+  it("returns the stored token when the configured URL matches", () => {
+    withHome((home) => {
+      saveCredentials({ token: "wlt_stored", expiresAt: future, apiUrl: DEFAULT_API_URL }, home);
+      expect(resolveToken({})).toBe("wlt_stored");
+    });
+  });
+
+  it("does not return the stored token when the API URL was repointed", () => {
+    withHome((home) => {
+      saveCredentials({ token: "wlt_stored", expiresAt: future, apiUrl: DEFAULT_API_URL }, home);
+      // Repointing at a self-hosted server without WILLET_API_TOKEN must not leak
+      // the cloud token to that server.
+      expect(resolveToken({ WILLET_API_URL: "https://willet.internal.example" })).toBeNull();
+    });
+  });
+
+  it("prefers the env token over a mismatched stored token", () => {
+    withHome((home) => {
+      saveCredentials({ token: "wlt_stored", expiresAt: future, apiUrl: DEFAULT_API_URL }, home);
+      expect(
+        resolveToken({ WILLET_API_TOKEN: "wlt_env", WILLET_API_URL: "https://willet.internal.example" }),
+      ).toBe("wlt_env");
+    });
+  });
+});
+
+describe("whoamiCommand", () => {
+  it("prints identity using the env token", async () => {
+    let auth: string | undefined;
+    const fetchImpl = vi.fn<FetchLike>(async (_input, init) => {
+      auth = (init?.headers as Record<string, string> | undefined)?.authorization;
+      return jsonResponse(identity);
+    });
+    const client = new ApiClient("https://x.test", fetchImpl as FetchLike);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const code = await whoamiCommand({ env: { WILLET_API_TOKEN: "wlt_env" }, client });
+    expect(code).toBe(0);
+    expect(auth).toBe("Bearer wlt_env");
+    expect(log.mock.calls.flat().join("\n")).toContain("Logged in as Ada");
+  });
+
+  it("errors with login hint when no token resolves", async () => {
+    // Point HOME at an empty dir so loadCredentials finds nothing.
+    const home = mkdtempSync(join(tmpdir(), "willet-cli-whoami-"));
+    const origHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const err = vi.spyOn(console, "error").mockImplementation(() => {});
+      const code = await whoamiCommand({ env: { WILLET_API_TOKEN: "" } });
+      expect(code).toBe(1);
+      expect(err.mock.calls.flat().join(" ")).toContain("Not logged in");
+    } finally {
+      if (origHome === undefined) delete process.env.HOME;
+      else process.env.HOME = origHome;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("maps 401 to a login prompt", async () => {
+    const fetchImpl = vi.fn<FetchLike>(async () => jsonResponse({}, 401));
+    const client = new ApiClient("https://x.test", fetchImpl as FetchLike);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const code = await whoamiCommand({ env: { WILLET_API_TOKEN: "bad" }, client });
+    expect(code).toBe(1);
+    expect(err.mock.calls.flat().join(" ")).toContain("401");
+  });
+
+  it("reports other errors", async () => {
+    const fetchImpl = vi.fn<FetchLike>(async () => jsonResponse({}, 500));
+    const client = new ApiClient("https://x.test", fetchImpl as FetchLike);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const code = await whoamiCommand({ env: { WILLET_API_TOKEN: "x" }, client });
+    expect(code).toBe(1);
+    expect(err).toHaveBeenCalled();
+  });
+});

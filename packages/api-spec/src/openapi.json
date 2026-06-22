@@ -1,0 +1,1362 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Willet Cloud REST API",
+    "version": "1.0.0",
+    "description": "REST surface mirroring the Willet MCP tools. Authenticated with a Bearer API secret (wlt_...) minted in the dashboard. Reads use GET; writes use POST/PATCH/DELETE. Read-only secrets are limited to GET; project-scoped secrets may only address routes under their own project id."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "security": [{ "bearerAuth": [] }],
+  "tags": [
+    { "name": "identity" },
+    { "name": "tickets" },
+    { "name": "organizations" },
+    { "name": "projects" },
+    { "name": "github" }
+  ],
+  "paths": {
+    "/me": {
+      "get": {
+        "operationId": "getCurrentIdentity",
+        "summary": "Identity and scope of the authenticated token",
+        "tags": ["identity"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Identity" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/tickets": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "listTickets",
+        "summary": "List tickets in a project",
+        "description": "Mirrors the list_tickets MCP tool. Items are verbosity-projected ticket objects.",
+        "tags": ["tickets"],
+        "parameters": [
+          { "$ref": "#/components/parameters/QStatus" },
+          { "$ref": "#/components/parameters/QType" },
+          { "$ref": "#/components/parameters/QPriority" },
+          { "$ref": "#/components/parameters/QTags" },
+          { "name": "parent_ticket_id", "in": "query", "schema": { "type": "string" } },
+          { "name": "assignee", "in": "query", "schema": { "type": "string" } },
+          { "name": "created_after", "in": "query", "schema": { "type": "string" } },
+          { "name": "created_before", "in": "query", "schema": { "type": "string" } },
+          { "name": "completed_after", "in": "query", "schema": { "type": "string" } },
+          { "name": "completed_before", "in": "query", "schema": { "type": "string" } },
+          { "name": "due_after", "in": "query", "schema": { "type": "string" } },
+          { "name": "due_before", "in": "query", "schema": { "type": "string" } },
+          { "name": "sort", "in": "query", "schema": { "$ref": "#/components/schemas/SortField" } },
+          { "name": "sort_direction", "in": "query", "schema": { "$ref": "#/components/schemas/SortDirection" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0 } },
+          { "$ref": "#/components/parameters/QVerbosity" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TicketList" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "operationId": "createTicket",
+        "summary": "Create a ticket",
+        "tags": ["tickets"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTicketBody" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ticket" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/tickets/search": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "searchTickets",
+        "summary": "Search tickets (text, semantic, or hybrid)",
+        "tags": ["tickets"],
+        "parameters": [
+          { "name": "query", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+          { "name": "mode", "in": "query", "schema": { "$ref": "#/components/schemas/SearchMode" } },
+          { "$ref": "#/components/parameters/QStatus" },
+          { "$ref": "#/components/parameters/QType" },
+          { "$ref": "#/components/parameters/QPriority" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "$ref": "#/components/parameters/QVerbosity" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TicketView" } } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/tickets/{ticketId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TicketId" }
+      ],
+      "get": {
+        "operationId": "getTicket",
+        "summary": "Get a ticket with comments and links",
+        "tags": ["tickets"],
+        "parameters": [
+          { "name": "include_history", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "include_subtickets", "in": "query", "schema": { "type": "boolean" } },
+          { "$ref": "#/components/parameters/QVerbosity" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TicketDetail" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "operationId": "updateTicket",
+        "summary": "Update a ticket's fields",
+        "tags": ["tickets"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateTicketBody" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ticket" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTicket",
+        "summary": "Delete a ticket and all its related data",
+        "tags": ["tickets"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeletedTicket" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/tickets/{ticketId}/start": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TicketId" }
+      ],
+      "post": {
+        "operationId": "startTicket",
+        "summary": "Set a ticket to in_progress",
+        "tags": ["tickets"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ticket" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/tickets/{ticketId}/complete": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TicketId" }
+      ],
+      "post": {
+        "operationId": "completeTicket",
+        "summary": "Mark a ticket as done",
+        "tags": ["tickets"],
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CompleteTicketBody" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ticket" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/tickets/{ticketId}/cancel": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TicketId" }
+      ],
+      "post": {
+        "operationId": "cancelTicket",
+        "summary": "Cancel a ticket",
+        "tags": ["tickets"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ticket" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/tickets/{ticketId}/reopen": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TicketId" }
+      ],
+      "post": {
+        "operationId": "reopenTicket",
+        "summary": "Move a ticket back to the open queue",
+        "tags": ["tickets"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ticket" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/tickets/{ticketId}/comments": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TicketId" }
+      ],
+      "post": {
+        "operationId": "addComment",
+        "summary": "Add a comment to a ticket",
+        "tags": ["tickets"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddCommentBody" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TicketComment" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/tickets/{ticketId}/graph": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TicketId" }
+      ],
+      "get": {
+        "operationId": "getTicketGraph",
+        "summary": "Get a ticket's link graph up to N hops",
+        "tags": ["tickets"],
+        "parameters": [
+          { "name": "depth", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 5 } },
+          { "$ref": "#/components/parameters/QVerbosity" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TicketGraph" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/tickets/{ticketId}/dependency-graph": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TicketId" }
+      ],
+      "get": {
+        "operationId": "renderDependencyGraph",
+        "summary": "Render a ticket dependency graph (text tree + nodes/edges)",
+        "tags": ["tickets"],
+        "parameters": [
+          { "name": "depth", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 5 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DependencyGraph" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/links": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "linkTickets",
+        "summary": "Link two tickets (blocks, relates_to, duplicates)",
+        "tags": ["tickets"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LinkTicketsBody" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TicketLink" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "unlinkTickets",
+        "summary": "Remove a link between two tickets",
+        "description": "Identifies the link via a JSON request body. Some proxies strip DELETE bodies; ensure your client sends it.",
+        "tags": ["tickets"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LinkTicketsBody" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Deleted" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/stats": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "getProjectStats",
+        "summary": "Ticket counts grouped by status, type, and priority",
+        "tags": ["tickets"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectStats" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/tags": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "listTags",
+        "summary": "List tags in use with their ticket counts",
+        "tags": ["tickets"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TagCount" } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/projects/{projectId}/board": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "renderTicketBoard",
+        "summary": "Render a kanban board (markdown) grouped by status, priority, or type",
+        "tags": ["tickets"],
+        "parameters": [
+          { "name": "group_by", "in": "query", "schema": { "$ref": "#/components/schemas/GroupBy" } },
+          { "$ref": "#/components/parameters/QStatus" },
+          { "$ref": "#/components/parameters/QType" },
+          { "$ref": "#/components/parameters/QPriority" },
+          { "$ref": "#/components/parameters/QTags" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Board" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/organizations": {
+      "get": {
+        "operationId": "listOrganizations",
+        "summary": "List organizations you belong to",
+        "tags": ["organizations"],
+        "parameters": [
+          { "name": "include_inactive", "in": "query", "schema": { "type": "boolean" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrganizationList" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      },
+      "post": {
+        "operationId": "createOrganization",
+        "summary": "Create an organization",
+        "tags": ["organizations"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateOrgBody" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrganizationBasic" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/organizations/{orgSlug}": {
+      "parameters": [{ "$ref": "#/components/parameters/OrgSlug" }],
+      "patch": {
+        "operationId": "updateOrganization",
+        "summary": "Update an organization's name or slug",
+        "tags": ["organizations"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateOrgBody" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrganizationBasic" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteOrganization",
+        "summary": "Permanently delete an organization and all its projects",
+        "tags": ["organizations"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeletedSlug" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/organizations/{orgSlug}/members": {
+      "parameters": [{ "$ref": "#/components/parameters/OrgSlug" }],
+      "get": {
+        "operationId": "listOrganizationMembers",
+        "summary": "List members and pending invitations for an organization",
+        "tags": ["organizations"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgMemberList" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "operationId": "inviteOrganizationMember",
+        "summary": "Create an invitation link to an organization",
+        "tags": ["organizations"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InviteMemberBody" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Invitation" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/organizations/{orgSlug}/members/{userId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrgSlug" },
+        { "$ref": "#/components/parameters/UserId" }
+      ],
+      "patch": {
+        "operationId": "updateOrganizationMemberRole",
+        "summary": "Change a member's role in an organization",
+        "tags": ["organizations"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrgMemberRoleBody" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemberRoleUpdated" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "removeOrganizationMember",
+        "summary": "Remove a member from an organization",
+        "tags": ["organizations"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemberRemoved" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/organizations/{orgSlug}/projects": {
+      "parameters": [{ "$ref": "#/components/parameters/OrgSlug" }],
+      "get": {
+        "operationId": "listProjects",
+        "summary": "List projects in an organization",
+        "tags": ["projects"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectList" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "operationId": "createProject",
+        "summary": "Create a project in an organization",
+        "tags": ["projects"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateProjectBody" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectBasic" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/organizations/{orgSlug}/projects/{projectSlug}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrgSlug" },
+        { "$ref": "#/components/parameters/ProjectSlug" }
+      ],
+      "patch": {
+        "operationId": "setProjectKeyPrefix",
+        "summary": "Change a project's key prefix",
+        "tags": ["projects"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyPrefixBody" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyPrefixUpdated" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteProject",
+        "summary": "Schedule a project for deletion (30-day retention)",
+        "tags": ["projects"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeletedSlug" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/organizations/{orgSlug}/projects/{projectSlug}/restore": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrgSlug" },
+        { "$ref": "#/components/parameters/ProjectSlug" }
+      ],
+      "post": {
+        "operationId": "restoreProject",
+        "summary": "Cancel a pending project deletion",
+        "tags": ["projects"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RestoredSlug" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/organizations/{orgSlug}/projects/{projectSlug}/members": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrgSlug" },
+        { "$ref": "#/components/parameters/ProjectSlug" }
+      ],
+      "get": {
+        "operationId": "listProjectMembers",
+        "summary": "List members assigned to a project",
+        "tags": ["projects"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectMemberList" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "operationId": "addProjectMember",
+        "summary": "Add an organization member to a project",
+        "tags": ["projects"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddProjectMemberBody" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectMemberAdded" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/organizations/{orgSlug}/projects/{projectSlug}/members/{userId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrgSlug" },
+        { "$ref": "#/components/parameters/ProjectSlug" },
+        { "$ref": "#/components/parameters/UserId" }
+      ],
+      "patch": {
+        "operationId": "updateProjectMemberRole",
+        "summary": "Change a member's role on a project",
+        "tags": ["projects"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectMemberRoleBody" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemberRoleUpdatedProject" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "removeProjectMember",
+        "summary": "Remove a member from a project",
+        "tags": ["projects"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemberRemoved" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/organizations/{orgSlug}/projects/{projectSlug}/github-repos": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrgSlug" },
+        { "$ref": "#/components/parameters/ProjectSlug" }
+      ],
+      "get": {
+        "operationId": "listGithubRepos",
+        "summary": "List GitHub repositories linked to a project",
+        "tags": ["github"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GithubRepoList" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "operationId": "linkGithubRepo",
+        "summary": "Link a GitHub repository to a project",
+        "tags": ["github"],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LinkGithubRepoBody" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Recoverable outcome (e.g. already linked, GitHub not connected)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GithubLinkResult" } } }
+          },
+          "201": {
+            "description": "A new repository mapping was created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GithubLinkResult" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/organizations/{orgSlug}/github-repos/{mappingId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrgSlug" },
+        { "$ref": "#/components/parameters/MappingId" }
+      ],
+      "delete": {
+        "operationId": "unlinkGithubRepo",
+        "summary": "Unlink a GitHub repository from a project",
+        "tags": ["github"],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GithubUnlinkResult" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "An API secret minted in the Willet dashboard, sent as `Authorization: Bearer wlt_...`."
+      }
+    },
+    "parameters": {
+      "ProjectId": { "name": "projectId", "in": "path", "required": true, "description": "The project ID (UUID).", "schema": { "type": "string" } },
+      "TicketId": { "name": "ticketId", "in": "path", "required": true, "description": "Ticket ULID or project-scoped key (e.g. WD-42).", "schema": { "type": "string" } },
+      "OrgSlug": { "name": "orgSlug", "in": "path", "required": true, "description": "Organization slug.", "schema": { "type": "string" } },
+      "ProjectSlug": { "name": "projectSlug", "in": "path", "required": true, "description": "Project slug.", "schema": { "type": "string" } },
+      "UserId": { "name": "userId", "in": "path", "required": true, "description": "Target member's user ID (UUID).", "schema": { "type": "string" } },
+      "MappingId": { "name": "mappingId", "in": "path", "required": true, "description": "Repository mapping ID from listGithubRepos.", "schema": { "type": "string" } },
+      "QStatus": { "name": "status", "in": "query", "description": "Filter by one or more statuses.", "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Status" } } },
+      "QType": { "name": "type", "in": "query", "description": "Filter by one or more types.", "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TicketType" } } },
+      "QPriority": { "name": "priority", "in": "query", "description": "Filter by one or more priorities.", "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Priority" } } },
+      "QTags": { "name": "tags", "in": "query", "description": "Filter by one or more tags.", "schema": { "type": "array", "items": { "type": "string" } } },
+      "QVerbosity": { "name": "verbosity", "in": "query", "description": "Projection detail level.", "schema": { "$ref": "#/components/schemas/Verbosity" } }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The request failed validation.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Unauthorized": {
+        "description": "Missing, malformed, revoked, or expired API secret.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Forbidden": {
+        "description": "The secret lacks permission (read-only on a write, wrong scope, insufficient role).",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "The addressed resource does not exist.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "schemas": {
+      "Status": { "type": "string", "enum": ["open", "in_progress", "done", "cancelled"] },
+      "TicketType": { "type": "string", "enum": ["chore", "bug", "feature", "epic"] },
+      "Priority": { "type": "string", "enum": ["low", "medium", "high", "urgent"] },
+      "LinkType": { "type": "string", "enum": ["blocks", "relates_to", "duplicates"] },
+      "SearchMode": { "type": "string", "enum": ["text", "semantic", "hybrid"] },
+      "SortField": { "type": "string", "enum": ["created_at", "updated_at", "completed_at", "due_date", "priority", "status", "type", "title"] },
+      "SortDirection": { "type": "string", "enum": ["asc", "desc"] },
+      "GroupBy": { "type": "string", "enum": ["status", "priority", "type"] },
+      "Verbosity": { "type": "string", "enum": ["short", "detailed", "full"] },
+      "OrgRole": { "type": "string", "enum": ["owner", "admin", "member"] },
+      "OrgInviteRole": { "type": "string", "enum": ["admin", "member"] },
+      "ProjectRole": { "type": "string", "enum": ["admin", "editor", "viewer"] },
+      "OrgPlan": { "type": "string", "enum": ["free", "pro", "enterprise"] },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string" },
+          "details": { "type": "array", "items": {} }
+        }
+      },
+      "Identity": {
+        "type": "object",
+        "required": ["user", "token"],
+        "properties": {
+          "user": {
+            "type": "object",
+            "required": ["id", "email", "name"],
+            "properties": {
+              "id": { "type": "string" },
+              "email": { "type": "string" },
+              "name": { "type": "string" }
+            }
+          },
+          "token": {
+            "type": "object",
+            "required": ["scope", "accessLevel", "projectId"],
+            "properties": {
+              "scope": { "type": "string", "enum": ["user", "project"] },
+              "accessLevel": { "type": "string", "enum": ["read", "read_write"] },
+              "projectId": { "type": ["string", "null"] }
+            }
+          }
+        }
+      },
+      "Ticket": {
+        "type": "object",
+        "description": "A ticket. `key`/`number` are present once the project has a key prefix; `similar_tickets` may appear on create.",
+        "required": ["id", "title", "description", "status", "type", "priority", "estimate", "actual", "tags", "parent_ticket_id", "assignee", "due_date", "created_at", "updated_at", "completed_at", "metadata"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "status": { "$ref": "#/components/schemas/Status" },
+          "type": { "$ref": "#/components/schemas/TicketType" },
+          "priority": { "$ref": "#/components/schemas/Priority" },
+          "estimate": { "type": ["string", "null"] },
+          "actual": { "type": ["string", "null"] },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "parent_ticket_id": { "type": ["string", "null"] },
+          "assignee": { "type": ["string", "null"] },
+          "due_date": { "type": ["string", "null"] },
+          "created_at": { "type": "string" },
+          "updated_at": { "type": "string" },
+          "completed_at": { "type": ["string", "null"] },
+          "metadata": { "type": "object", "additionalProperties": true },
+          "key": { "type": ["string", "null"] },
+          "number": { "type": ["number", "null"] },
+          "similar_tickets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["key", "title"],
+              "properties": {
+                "key": { "type": ["string", "null"] },
+                "title": { "type": "string" },
+                "potential_duplicate": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      },
+      "TicketView": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "A verbosity-projected ticket. `short` returns id, title, status, type, priority, estimate, tags, due_date, assignee; `detailed` returns the full ticket with a truncated description; `full` returns the complete ticket. Always includes `key`/`number` when available, and `score` on search results."
+      },
+      "TicketComment": {
+        "type": "object",
+        "required": ["id", "ticket_id", "content", "created_at", "created_by"],
+        "properties": {
+          "id": { "type": "string" },
+          "ticket_id": { "type": "string" },
+          "content": { "type": "string" },
+          "created_at": { "type": "string" },
+          "created_by": { "type": "string" }
+        }
+      },
+      "TicketLink": {
+        "type": "object",
+        "required": ["id", "source_ticket_id", "target_ticket_id", "link_type", "created_at"],
+        "properties": {
+          "id": { "type": "string" },
+          "source_ticket_id": { "type": "string" },
+          "target_ticket_id": { "type": "string" },
+          "link_type": { "$ref": "#/components/schemas/LinkType" },
+          "created_at": { "type": "string" }
+        }
+      },
+      "TicketDetail": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "A verbosity-projected ticket plus a `comments` array (TicketComment[]) and a `links` array (TicketLink[]), and optionally `history` (TicketHistory[]) and `subtickets` (TicketView[]) when requested via the include_history / include_subtickets query flags."
+      },
+      "TicketList": {
+        "type": "object",
+        "required": ["tickets", "total"],
+        "properties": {
+          "tickets": { "type": "array", "items": { "$ref": "#/components/schemas/TicketView" } },
+          "total": { "type": "integer" }
+        }
+      },
+      "TicketGraph": {
+        "type": "object",
+        "required": ["nodes", "edges"],
+        "properties": {
+          "nodes": { "type": "array", "items": { "$ref": "#/components/schemas/TicketView" } },
+          "edges": { "type": "array", "items": { "$ref": "#/components/schemas/TicketLink" } }
+        }
+      },
+      "DependencyGraph": {
+        "type": "object",
+        "required": ["text", "nodes", "edges"],
+        "properties": {
+          "text": { "type": "string" },
+          "nodes": { "type": "array", "items": { "$ref": "#/components/schemas/TicketView" } },
+          "edges": { "type": "array", "items": { "$ref": "#/components/schemas/TicketLink" } }
+        }
+      },
+      "ProjectStats": {
+        "type": "object",
+        "required": ["total", "byStatus", "byType", "byPriority"],
+        "properties": {
+          "total": { "type": "integer" },
+          "byStatus": { "type": "object", "additionalProperties": { "type": "integer" } },
+          "byType": { "type": "object", "additionalProperties": { "type": "integer" } },
+          "byPriority": { "type": "object", "additionalProperties": { "type": "integer" } }
+        }
+      },
+      "TagCount": {
+        "type": "object",
+        "required": ["tag", "count"],
+        "properties": {
+          "tag": { "type": "string" },
+          "count": { "type": "integer" }
+        }
+      },
+      "Board": {
+        "type": "object",
+        "required": ["board"],
+        "properties": { "board": { "type": "string" } }
+      },
+      "Deleted": {
+        "type": "object",
+        "required": ["deleted"],
+        "properties": { "deleted": { "type": "boolean" } }
+      },
+      "DeletedTicket": {
+        "type": "object",
+        "required": ["deleted", "id"],
+        "properties": {
+          "deleted": { "type": "boolean" },
+          "id": { "type": "string" }
+        }
+      },
+      "DeletedSlug": {
+        "type": "object",
+        "required": ["deleted", "slug"],
+        "properties": {
+          "deleted": { "type": "boolean" },
+          "slug": { "type": "string" }
+        }
+      },
+      "RestoredSlug": {
+        "type": "object",
+        "required": ["restored", "slug"],
+        "properties": {
+          "restored": { "type": "boolean" },
+          "slug": { "type": "string" }
+        }
+      },
+      "Organization": {
+        "type": "object",
+        "required": ["id", "name", "slug", "plan", "role", "createdAt", "deleteRequestedAt", "subscriptionActive"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "slug": { "type": "string" },
+          "plan": { "$ref": "#/components/schemas/OrgPlan" },
+          "role": { "$ref": "#/components/schemas/OrgRole" },
+          "createdAt": { "type": "string" },
+          "deleteRequestedAt": { "type": ["string", "null"] },
+          "subscriptionActive": { "type": "boolean" }
+        }
+      },
+      "OrganizationBasic": {
+        "type": "object",
+        "required": ["id", "name", "slug", "plan", "createdAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "slug": { "type": "string" },
+          "plan": { "$ref": "#/components/schemas/OrgPlan" },
+          "createdAt": { "type": "string" }
+        }
+      },
+      "OrganizationList": {
+        "type": "object",
+        "required": ["count", "organizations"],
+        "properties": {
+          "count": { "type": "integer" },
+          "organizations": { "type": "array", "items": { "$ref": "#/components/schemas/Organization" } }
+        }
+      },
+      "OrgMember": {
+        "type": "object",
+        "required": ["userId", "role", "joinedAt", "email", "name", "avatarUrl"],
+        "properties": {
+          "userId": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/OrgRole" },
+          "joinedAt": { "type": "string" },
+          "email": { "type": "string" },
+          "name": { "type": "string" },
+          "avatarUrl": { "type": ["string", "null"] }
+        }
+      },
+      "Invitation": {
+        "type": "object",
+        "required": ["id", "email", "role", "expiresAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "email": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/OrgInviteRole" },
+          "expiresAt": { "type": "string" },
+          "token": { "type": "string" },
+          "invitationUrl": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      },
+      "OrgMemberList": {
+        "type": "object",
+        "required": ["members", "pendingInvitations"],
+        "properties": {
+          "members": { "type": "array", "items": { "$ref": "#/components/schemas/OrgMember" } },
+          "pendingInvitations": { "type": "array", "items": { "$ref": "#/components/schemas/Invitation" } }
+        }
+      },
+      "MemberRoleUpdated": {
+        "type": "object",
+        "required": ["updated", "userId", "role"],
+        "properties": {
+          "updated": { "type": "boolean" },
+          "userId": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/OrgInviteRole" }
+        }
+      },
+      "MemberRoleUpdatedProject": {
+        "type": "object",
+        "required": ["updated", "userId", "role"],
+        "properties": {
+          "updated": { "type": "boolean" },
+          "userId": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/ProjectRole" }
+        }
+      },
+      "MemberRemoved": {
+        "type": "object",
+        "required": ["removed", "userId"],
+        "properties": {
+          "removed": { "type": "boolean" },
+          "userId": { "type": "string" }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "required": ["id", "name", "slug", "keyPrefix", "createdAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "slug": { "type": "string" },
+          "keyPrefix": { "type": ["string", "null"] },
+          "createdAt": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/ProjectRole" }
+        }
+      },
+      "ProjectBasic": {
+        "type": "object",
+        "required": ["id", "name", "slug", "keyPrefix", "createdAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "slug": { "type": "string" },
+          "keyPrefix": { "type": ["string", "null"] },
+          "createdAt": { "type": "string" }
+        }
+      },
+      "ProjectList": {
+        "type": "object",
+        "required": ["count", "projects"],
+        "properties": {
+          "count": { "type": "integer" },
+          "projects": { "type": "array", "items": { "$ref": "#/components/schemas/Project" } }
+        }
+      },
+      "ProjectMember": {
+        "type": "object",
+        "required": ["userId", "role", "email", "name", "avatarUrl"],
+        "properties": {
+          "userId": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/ProjectRole" },
+          "email": { "type": "string" },
+          "name": { "type": "string" },
+          "avatarUrl": { "type": ["string", "null"] }
+        }
+      },
+      "ProjectMemberList": {
+        "type": "object",
+        "required": ["count", "members"],
+        "properties": {
+          "count": { "type": "integer" },
+          "members": { "type": "array", "items": { "$ref": "#/components/schemas/ProjectMember" } }
+        }
+      },
+      "ProjectMemberAdded": {
+        "type": "object",
+        "required": ["added", "userId", "role"],
+        "properties": {
+          "added": { "type": "boolean" },
+          "userId": { "type": "string" },
+          "role": { "$ref": "#/components/schemas/ProjectRole" }
+        }
+      },
+      "KeyPrefixUpdated": {
+        "type": "object",
+        "required": ["project_id", "slug", "key_prefix", "previous_prefix"],
+        "properties": {
+          "project_id": { "type": "string" },
+          "slug": { "type": "string" },
+          "key_prefix": { "type": "string" },
+          "previous_prefix": { "type": ["string", "null"] }
+        }
+      },
+      "GithubRepo": {
+        "type": "object",
+        "required": ["id", "owner", "repo", "fullName", "createdAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "owner": { "type": "string" },
+          "repo": { "type": "string" },
+          "fullName": { "type": "string" },
+          "createdAt": { "type": "string" }
+        }
+      },
+      "GithubRepoList": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "`{ count: number, repos: GithubRepo[] }` — the GitHub repositories linked to the project."
+      },
+      "GithubLinkResult": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "On success: { ok: true, mapping_id, repo, message } or { ok: true, already_linked: true, mapping_id }. Recoverable failures carry an `error` discriminator (github_not_connected, insufficient_github_scope, github_org_restriction) with guidance fields."
+      },
+      "GithubUnlinkResult": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "`{ ok: true, unlinked: \"owner/repo\" }` — the repository mapping that was removed."
+      },
+      "CreateTicketBody": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "status": { "$ref": "#/components/schemas/Status" },
+          "type": { "$ref": "#/components/schemas/TicketType" },
+          "priority": { "$ref": "#/components/schemas/Priority" },
+          "estimate": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "parent_ticket_id": { "type": "string" },
+          "assignee": { "type": "string" },
+          "due_date": { "type": "string" },
+          "metadata": { "type": "object", "additionalProperties": true },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["target_ticket_id", "link_type"],
+              "properties": {
+                "target_ticket_id": { "type": "string" },
+                "link_type": { "$ref": "#/components/schemas/LinkType" }
+              }
+            }
+          },
+          "initial_comment": { "type": "string" }
+        }
+      },
+      "UpdateTicketBody": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "type": { "$ref": "#/components/schemas/TicketType" },
+          "priority": { "$ref": "#/components/schemas/Priority" },
+          "estimate": { "type": ["string", "null"] },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "parent_ticket_id": { "type": ["string", "null"] },
+          "assignee": { "type": ["string", "null"] },
+          "due_date": { "type": ["string", "null"] },
+          "metadata": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "CompleteTicketBody": {
+        "type": "object",
+        "properties": { "actual": { "type": "string" } }
+      },
+      "AddCommentBody": {
+        "type": "object",
+        "required": ["content"],
+        "properties": { "content": { "type": "string", "minLength": 1 } }
+      },
+      "LinkTicketsBody": {
+        "type": "object",
+        "required": ["source_ticket_id", "target_ticket_id", "link_type"],
+        "properties": {
+          "source_ticket_id": { "type": "string" },
+          "target_ticket_id": { "type": "string" },
+          "link_type": { "$ref": "#/components/schemas/LinkType" }
+        }
+      },
+      "CreateOrgBody": {
+        "type": "object",
+        "required": ["name"],
+        "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 100 } }
+      },
+      "UpdateOrgBody": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "slug": { "type": "string" }
+        }
+      },
+      "InviteMemberBody": {
+        "type": "object",
+        "required": ["email", "role"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "role": { "$ref": "#/components/schemas/OrgInviteRole" }
+        }
+      },
+      "OrgMemberRoleBody": {
+        "type": "object",
+        "required": ["role"],
+        "properties": { "role": { "$ref": "#/components/schemas/OrgInviteRole" } }
+      },
+      "CreateProjectBody": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "key_prefix": { "type": "string", "minLength": 1, "maxLength": 50 }
+        }
+      },
+      "KeyPrefixBody": {
+        "type": "object",
+        "required": ["key_prefix"],
+        "properties": { "key_prefix": { "type": "string", "minLength": 1, "maxLength": 50 } }
+      },
+      "AddProjectMemberBody": {
+        "type": "object",
+        "required": ["user_id", "role"],
+        "properties": {
+          "user_id": { "type": "string", "format": "uuid" },
+          "role": { "$ref": "#/components/schemas/ProjectRole" }
+        }
+      },
+      "ProjectMemberRoleBody": {
+        "type": "object",
+        "required": ["role"],
+        "properties": { "role": { "$ref": "#/components/schemas/ProjectRole" } }
+      },
+      "LinkGithubRepoBody": {
+        "type": "object",
+        "required": ["repo"],
+        "properties": {
+          "repo": { "type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$", "description": "GitHub repository in `owner/repo` form." }
+        }
+      }
+    }
+  }
+}
