@@ -1,6 +1,9 @@
 [server]
 port = 3000
 base_url = "https://willet.example.com"
+# Optional. Set to false to disable the REST API at /api/v1 and serve only the
+# MCP endpoint. Defaults to true. Takes effect on restart.
+# rest_api = true
 
 [users.alice]
 secret = "change-me-to-a-random-string"
