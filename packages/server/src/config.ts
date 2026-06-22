@@ -5,8 +5,19 @@ export interface WilletConfig {
   server: {
     port: number;
     base_url: string;
+    /**
+     * Enable the REST API at /api/v1. Defaults to true. Set to false to serve
+     * only the MCP endpoint — e.g. if you don't use the CLI / REST clients and
+     * want a smaller surface. Changing this takes effect on restart.
+     */
+    rest_api?: boolean;
   };
   users: Record<string, { secret: string }>;
+}
+
+/** Whether the REST API should be mounted (default on unless explicitly disabled). */
+export function restApiEnabled(config: WilletConfig): boolean {
+  return config.server.rest_api !== false;
 }
 
 export function loadConfig(path: string): WilletConfig {
@@ -15,6 +26,12 @@ export function loadConfig(path: string): WilletConfig {
 
   if (!parsed.server?.port || !parsed.server?.base_url) {
     throw new Error("Config must include [server] with port and base_url");
+  }
+  if (
+    parsed.server.rest_api !== undefined &&
+    typeof parsed.server.rest_api !== "boolean"
+  ) {
+    throw new Error("server.rest_api must be a boolean (true or false)");
   }
   if (!parsed.users || Object.keys(parsed.users).length === 0) {
     throw new Error("Config must include at least one [users.<name>] entry");

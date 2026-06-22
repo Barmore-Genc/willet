@@ -10,7 +10,7 @@ import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { WilletAuthProvider } from "./auth/provider.js";
 import { runAsUser } from "@willet/shared";
 import { createRestRouter } from "./rest/router.js";
-import type { WilletConfig } from "./config.js";
+import { restApiEnabled, type WilletConfig } from "./config.js";
 
 /** Read the authenticated username set by the MCP bearer-auth middleware. */
 function authUsername(req: express.Request): string {
@@ -100,8 +100,12 @@ export async function startHttpServer(
   );
 
   // REST API (mounted on the same app). Has its own bearer-secret auth and
-  // body parsing; the MCP routes below are untouched.
-  app.use("/api/v1", createRestRouter({ provider }));
+  // body parsing; the MCP routes below are untouched. Operators can disable it
+  // via `rest_api = false` in [server] to serve only MCP.
+  const restEnabled = restApiEnabled(config);
+  if (restEnabled) {
+    app.use("/api/v1", createRestRouter({ provider }));
+  }
 
   // Auth middleware for MCP endpoints
   const authMiddleware = requireBearerAuth({
@@ -196,6 +200,11 @@ export async function startHttpServer(
   const httpServer = app.listen(port, () => {
     console.log(`Willet HTTP server listening on port ${port}`);
     console.log(`MCP endpoint: ${mcpUrl}`);
+    console.log(
+      restEnabled
+        ? `REST API: ${new URL("/api/v1", baseUrl)}`
+        : "REST API: disabled (server.rest_api = false)"
+    );
     console.log(
       `Users: ${Object.keys(config.users).join(", ")}`
     );
