@@ -106,6 +106,28 @@ describe("loginCommand", () => {
     expect(err.mock.calls.flat().join(" ")).toContain("WILLET_API_TOKEN");
   });
 
+  it("prints a cloud-only message when the device endpoint 404s", async () => {
+    const fetchImpl = vi.fn<FetchLike>(async (input) => {
+      const url = urlOf(input);
+      if (url.endsWith("/api/cli-auth/device")) {
+        return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = new ApiClient("https://self-hosted.test", fetchImpl as FetchLike);
+    const code = await loginCommand({
+      env: { WILLET_API_URL: "https://self-hosted.test" },
+      client,
+      openBrowser: async () => false,
+    });
+    expect(code).toBe(1);
+    const errors = err.mock.calls.flat().join("\n");
+    expect(errors).toContain("only works with Willet Cloud");
+    expect(errors).toContain("WILLET_API_TOKEN");
+  });
+
   it("reports denied", async () => {
     const fetchImpl = vi.fn<FetchLike>(async (input) => {
       const url = urlOf(input);

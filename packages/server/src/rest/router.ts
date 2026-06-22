@@ -39,9 +39,30 @@ export function sendError(res: Response, status: number, message: string): void 
 }
 
 /**
+ * Is this error an unexpected server fault rather than a client error?
+ *
+ * The REST validation helpers and the @willet/shared query functions throw
+ * plain `Error`s on bad input, which we surface as 4xx. But programming bugs
+ * (a null dereference → `TypeError`, an out-of-range index → `RangeError`) and
+ * database failures (better-sqlite3's `SqliteError`) are not the caller's
+ * fault; they should be logged and returned as 500, not dressed up as a 400.
+ */
+function isUnexpectedError(err: unknown): boolean {
+  if (err instanceof TypeError || err instanceof RangeError || err instanceof ReferenceError) {
+    return true;
+  }
+  // better-sqlite3 raises `SqliteError` (identified by name to avoid importing
+  // the driver into this package) for DB-level failures.
+  if (err instanceof Error && err.name === "SqliteError") return true;
+  return false;
+}
+
+/**
  * Wrap an async handler so a thrown error is turned into a JSON error response.
- * `Ticket not found` / `Project not found` map to 404; everything else to 400
- * (the underlying query functions throw plain Errors on bad input).
+ * `Ticket not found` / `Project not found` map to 404; other plain Errors to 400
+ * (the underlying query functions throw plain Errors on bad input). Unexpected
+ * faults (programming bugs, DB failures) are passed to the router's error
+ * handler via `next(err)` so they're logged and returned as 500.
  */
 export function wrap(
   handler: (req: Request, res: Response) => Promise<void>,
@@ -49,6 +70,7 @@ export function wrap(
   return (req, res, next) => {
     void runAsUser(req.willetUser ?? "local", () => handler(req, res)).catch((err: unknown) => {
       if (res.headersSent) return next(err);
+      if (isUnexpectedError(err)) return next(err);
       const message = err instanceof Error ? err.message : "Internal server error";
       if (/not found/i.test(message)) {
         sendError(res, 404, message);
@@ -112,6 +134,15 @@ export function createRestRouter(deps: RestDeps): Router {
   registerProjectRoutes(router, auth);
   // Hosted-only endpoints → 501 with a self-deploy message.
   registerStubRoutes(router, auth);
+
+  // Terminal error handler: `wrap` forwards unexpected faults here. Log the real
+  // error server-side and return a generic 500 — never leak internal details
+  // (stack traces, DB messages) to the client.
+  router.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) return next(err);
+    console.error("Unhandled REST API error:", err);
+    sendError(res, 500, "Internal server error");
+  });
 
   return router;
 }
