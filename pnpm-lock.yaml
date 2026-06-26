@@ -37,9 +37,6 @@ importers:
 
   packages/cli:
     dependencies:
-      '@willet/api-spec':
-        specifier: workspace:*
-        version: link:../api-spec
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -53,6 +50,9 @@ importers:
       '@vitest/coverage-istanbul':
         specifier: ^4.1.9
         version: 4.1.9(vitest@4.1.9)
+      '@willet/api-spec':
+        specifier: workspace:*
+        version: link:../api-spec
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

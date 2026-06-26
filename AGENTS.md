@@ -57,6 +57,7 @@ packages/
 ## Packaging
 
 - **npm**: `cd packages/mcp && npm pack` — esbuild bundle + bin (no separate @willet/shared publish needed)
+- **npm (CLI)**: `@willet/cli` (`willet` bin) publishes on tag via `.github/workflows/release.yml`. Its only `@willet` workspace dep (`api-spec`) is type-only and erased by `tsc`, so the published package has no `@willet` runtime deps and api-spec is never published.
 - **Docker**: `docker build -f packages/server/Dockerfile -t willet .`
 
 ## Conventions

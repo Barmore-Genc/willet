@@ -118,3 +118,7 @@ jobs:
         run: cd packages/shared && npm publish --access public --provenance
       - name: Publish @willet/mcp to npm
         run: cd packages/mcp && npm publish --access public --provenance
+      # @willet/cli's only @willet workspace dep (api-spec) is type-only and
+      # erased at build, so the CLI publishes standalone with no @willet runtime deps.
+      - name: Publish @willet/cli to npm
+        run: cd packages/cli && npm publish --access public --provenance
