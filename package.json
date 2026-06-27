@@ -5,11 +5,11 @@
   "description": "A local-first task tracking MCP server for AI agents",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SeriousBug/willet.git"
+    "url": "git+https://github.com/Barmore-Genc/willet.git"
   },
-  "homepage": "https://github.com/SeriousBug/willet",
+  "homepage": "https://github.com/Barmore-Genc/willet",
   "bugs": {
-    "url": "https://github.com/SeriousBug/willet/issues"
+    "url": "https://github.com/Barmore-Genc/willet/issues"
   },
   "engines": {
     "node": ">=20.0.0"
