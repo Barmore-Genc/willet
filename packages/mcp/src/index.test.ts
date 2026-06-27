@@ -421,6 +421,45 @@ describe("Willet MCP stdio E2E", () => {
     expect(searchText).toContain("authentication");
   });
 
+  it("should not crash on queries containing FTS5 special syntax", async () => {
+    const projectDir = join(dataDir, "fts-syntax-project");
+
+    const initResult = await client.callTool({
+      name: "init_project",
+      arguments: { name: "FTS Syntax Project", directory: projectDir },
+    });
+    const projectId = (initResult.content as Array<{ text: string }>)[0]
+      .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+    await client.callTool({
+      name: "create_ticket",
+      arguments: {
+        project_id: projectId,
+        title: "Deploy in progress",
+        description: "Release rollout currently in progress",
+      },
+    });
+
+    // Each of these would crash FTS5 if terms were passed unquoted:
+    // a column filter (`in:progress`), a bare keyword (`OR`), a prefix
+    // operator (`*`), and an unbalanced quote.
+    for (const query of ["in:progress", "deploy OR", "deploy*", 'deploy"']) {
+      const searchResult = await client.callTool({
+        name: "search_tickets",
+        arguments: { project_id: projectId, query },
+      });
+      expect(searchResult.isError ?? false).toBe(false);
+    }
+
+    // The column-filter form should still find the matching ticket.
+    const matchResult = await client.callTool({
+      name: "search_tickets",
+      arguments: { project_id: projectId, query: "in:progress" },
+    });
+    const matchText = (matchResult.content as Array<{ text: string }>)[0].text;
+    expect(matchText).toContain("Deploy in progress");
+  });
+
   it("should list and filter tasks by status", async () => {
     const projectDir = join(dataDir, "filter-project");
 
