@@ -725,6 +725,21 @@ export function listTickets(
 
 // --- Search ---
 
+// Build an FTS5 MATCH expression from a free-text query for hybrid mode.
+// Each whitespace-separated term is wrapped in a double-quoted string so FTS5
+// treats it as a literal, not as query syntax. Without this, a term containing
+// special syntax (a column filter like `in:progress`, a prefix `*`, a bare
+// keyword like `OR`/`NEAR`, or an unbalanced `"`) makes FTS5 raise a syntax or
+// "no such column" error and the whole search fails. Internal double quotes are
+// escaped by doubling, per FTS5 string-literal rules.
+function buildHybridMatchExpr(query: string): string {
+  return query
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((term) => `"${term.replace(/"/g, '""')}"`)
+    .join(" OR ");
+}
+
 export async function searchTickets(
   db: Database.Database,
   query: string,
@@ -819,16 +834,19 @@ export async function searchTickets(
   const k = 60;
 
   // FTS results
-  const ftsRows = db
-    .prepare(
-      `SELECT t.id
+  const matchExpr = buildHybridMatchExpr(query);
+  const ftsRows = matchExpr
+    ? (db
+        .prepare(
+          `SELECT t.id
        FROM tickets_fts fts
        JOIN tickets t ON t.rowid = fts.rowid
        WHERE tickets_fts MATCH ?
        ORDER BY fts.rank
        LIMIT ?`
-    )
-    .all(query.split(/\s+/).join(" OR "), limit * 2) as Array<{ id: string }>;
+        )
+        .all(matchExpr, limit * 2) as Array<{ id: string }>)
+    : [];
 
   // Semantic results (via sqlite-vec KNN)
   const knnRows = await knnSearch(limit * 5);
