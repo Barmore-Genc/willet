@@ -3,15 +3,15 @@ set -e
 
 case "$1" in
   serve|"")
-    exec node packages/server/dist/index.js
+    exec node dist/index.js
     ;;
   export)
     shift
-    exec node packages/server/dist/export.js "$@"
+    exec node dist/export.js "$@"
     ;;
   import)
     shift
-    exec node packages/server/dist/import.js "$@"
+    exec node dist/import.js "$@"
     ;;
   *)
     echo "Unknown command: $1"
