@@ -1,8 +1,7 @@
 {
   "name": "@willet/cli",
   "version": "0.0.1",
-  "private": true,
-  "license": "AGPL-3.0-only",
+  "description": "Willet CLI — scriptable access to Willet Cloud or a self-deployed Willet server",
   "type": "module",
   "bin": {
     "willet": "dist/bin.js"
@@ -10,20 +9,33 @@
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SeriousBug/willet.git"
+  },
+  "homepage": "https://github.com/SeriousBug/willet",
+  "bugs": {
+    "url": "https://github.com/SeriousBug/willet/issues"
+  },
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
+    "clean": "rm -rf dist",
     "build": "tsc",
     "check": "tsc --noEmit",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@willet/api-spec": "workspace:*",
     "commander": "^15.0.0",
     "openapi-fetch": "^0.14.0"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
     "@vitest/coverage-istanbul": "^4.1.9",
+    "@willet/api-spec": "workspace:*",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"
   }
