@@ -107,10 +107,17 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
+      # setup-node ships npm 10, which predates OIDC trusted publishing.
+      # Trusted publishing (tokenless, via id-token) needs npm >= 11.5.1.
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
       - name: Set version from git tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          npm --no-git-tag-version version "$VERSION" --workspaces --include-workspace-root
+          # This repo uses pnpm workspaces (pnpm-workspace.yaml), not npm
+          # workspaces, so `npm version --workspaces` is a no-op here. Set the
+          # version in each package directly via pnpm -r.
+          pnpm -r exec npm version "$VERSION" --no-git-tag-version --allow-same-version
       - run: pnpm install
       - run: pnpm run build
       # @willet/shared must be published before @willet/mcp (mcp depends on it).
