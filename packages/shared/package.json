@@ -3,6 +3,15 @@
   "version": "0.0.0",
   "description": "Willet core — types, database, embeddings, and tool definitions",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Barmore-Genc/willet.git",
+    "directory": "packages/shared"
+  },
+  "bugs": {
+    "url": "https://github.com/Barmore-Genc/willet/issues"
+  },
+  "homepage": "https://github.com/Barmore-Genc/willet#readme",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
