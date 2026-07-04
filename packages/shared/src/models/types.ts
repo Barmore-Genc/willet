@@ -187,19 +187,28 @@ export const UnlinkTicketsInputSchema = z.object({
   link_type: LinkTypeSchema,
 });
 
+/**
+ * Description of the ticket filter language, surfaced to agents on the
+ * `filter` parameter of list/search. Kept example-heavy so a model can write a
+ * correct predicate without external docs.
+ */
+export const FilterSchema = z
+  .string()
+  .describe(
+    "Boolean filter predicate over ticket fields. Combine terms with AND, OR, NOT and parentheses. " +
+      "Operators: =, != (or <>), <, <=, >, >=, IN (...), NOT IN (...), IS NULL, IS NOT NULL. " +
+      "Fields: status, type, priority, assignee, parent_ticket_id, id, estimate, actual, " +
+      "created_at, updated_at, completed_at, due_date, and metadata.<key>. " +
+      "priority compares by severity (low<medium<high<urgent). Dates take ISO strings or now()/today() " +
+      "with optional offsets like now() - 7d (units h/d/w). Tag membership: 'ui' IN tags. " +
+      "Keywords and field names are case-insensitive; enum values are normalized; tag and metadata " +
+      "values are case-sensitive. There is no text/substring match here — use search (query/mode) for that. " +
+      "Examples: \"status IN ('open','in_progress') AND priority >= 'high'\"; " +
+      "\"assignee IS NULL AND due_date < now()\"; \"'archived' NOT IN tags AND metadata.team = 'core'\"."
+  );
+
 export const ListTicketsInputSchema = z.object({
-  status: stringOrArray(StatusSchema).optional(),
-  type: stringOrArray(TicketTypeSchema).optional(),
-  priority: stringOrArray(PrioritySchema).optional(),
-  tags: z.array(z.string()).optional(),
-  parent_ticket_id: z.string().nullable().optional(),
-  assignee: z.string().nullable().optional(),
-  created_after: z.string().optional(),
-  created_before: z.string().optional(),
-  completed_after: z.string().optional(),
-  completed_before: z.string().optional(),
-  due_after: z.string().optional(),
-  due_before: z.string().optional(),
+  filter: FilterSchema.optional(),
   sort: SortFieldSchema.optional(),
   sort_direction: SortDirectionSchema.optional(),
   limit: z.number().int().positive().optional(),
@@ -210,9 +219,7 @@ export const ListTicketsInputSchema = z.object({
 export const SearchTicketsInputSchema = z.object({
   query: z.string().min(1),
   mode: SearchModeSchema.optional(),
-  status: stringOrArray(StatusSchema).optional(),
-  type: stringOrArray(TicketTypeSchema).optional(),
-  priority: stringOrArray(PrioritySchema).optional(),
+  filter: FilterSchema.optional(),
   limit: z.number().int().positive().optional(),
   verbosity: VerbositySchema.optional(),
 });

@@ -35,16 +35,13 @@ import {
   SortDirectionSchema,
   GroupBySchema,
   VerbositySchema,
-  type Status,
-  type TicketType,
-  type Priority,
   type Verbosity,
   type Ticket,
   type ToolOptions,
 } from "@willet/shared";
 import { z } from "zod";
 import { wrap, sendError } from "./router.js";
-import { asArray, asString, asBool, asInt, parseBody, param } from "./params.js";
+import { asString, asBool, asInt, parseBody, param } from "./params.js";
 import { renderBoard, renderDependencyGraphText } from "./render.js";
 
 type ProjectDb = ReturnType<typeof getProjectDb>;
@@ -63,21 +60,6 @@ function project(t: Ticket & { score?: number }, v: Verbosity): Record<string, u
     return { ...out, score: t.score };
   }
   return out;
-}
-
-// Parse the shared status/type/priority array filters from the query string.
-function arrayFilter<T extends string>(
-  value: unknown,
-  schema: z.ZodType<T>,
-  label: string,
-): T[] | undefined {
-  const raw = asArray(value);
-  if (!raw) return undefined;
-  return raw.map((v) => {
-    const parsed = schema.safeParse(v);
-    if (!parsed.success) throw new Error(`Invalid ${label}: ${v}`);
-    return parsed.data;
-  });
 }
 
 // --- Request body schemas ---
@@ -133,9 +115,7 @@ export function registerTicketRoutes(router: Router, auth: RequestHandler): void
       const mode = req.query.mode ? SearchModeSchema.parse(asString(req.query.mode)) : undefined;
       const results = await searchTickets(db, query, {
         mode,
-        status: arrayFilter<Status>(req.query.status, StatusSchema, "status"),
-        type: arrayFilter<TicketType>(req.query.type, TicketTypeSchema, "type"),
-        priority: arrayFilter<Priority>(req.query.priority, PrioritySchema, "priority"),
+        filter: asString(req.query.filter),
         limit: asInt(req.query.limit, "limit"),
       });
       const v = req.query.verbosity ? VerbositySchema.parse(asString(req.query.verbosity)) : "detailed";
@@ -150,18 +130,7 @@ export function registerTicketRoutes(router: Router, auth: RequestHandler): void
       const db = resolveDb(param(req, "projectId"));
       if (!db) return sendError(res, 404, `Project not found: ${param(req, "projectId")}`);
       const result = listTickets(db, {
-        status: arrayFilter<Status>(req.query.status, StatusSchema, "status"),
-        type: arrayFilter<TicketType>(req.query.type, TicketTypeSchema, "type"),
-        priority: arrayFilter<Priority>(req.query.priority, PrioritySchema, "priority"),
-        tags: asArray(req.query.tags),
-        parent_ticket_id: asString(req.query.parent_ticket_id),
-        assignee: asString(req.query.assignee),
-        created_after: asString(req.query.created_after),
-        created_before: asString(req.query.created_before),
-        completed_after: asString(req.query.completed_after),
-        completed_before: asString(req.query.completed_before),
-        due_after: asString(req.query.due_after),
-        due_before: asString(req.query.due_before),
+        filter: asString(req.query.filter),
         sort: req.query.sort ? SortFieldSchema.parse(asString(req.query.sort)) : undefined,
         sort_direction: req.query.sort_direction
           ? SortDirectionSchema.parse(asString(req.query.sort_direction))
@@ -203,7 +172,14 @@ export function registerTicketRoutes(router: Router, auth: RequestHandler): void
       result.links = getLinks(db, ticketId);
       if (asBool(req.query.include_history)) result.history = getHistory(db, ticketId);
       if (asBool(req.query.include_subtickets)) {
-        const { tickets } = listTickets(db, { parent_ticket_id: ticketId });
+        const { tickets } = listTickets(db, {
+          filter: {
+            node: "compare",
+            field: "parent_ticket_id",
+            op: "=",
+            value: { kind: "string", value: ticketId },
+          },
+        });
         result.subtickets = tickets.map((t) => project(t, v));
       }
       res.status(200).json(result);
@@ -364,10 +340,7 @@ export function registerTicketRoutes(router: Router, auth: RequestHandler): void
       if (!db) return sendError(res, 404, `Project not found: ${param(req, "projectId")}`);
       const groupBy = req.query.group_by ? GroupBySchema.parse(asString(req.query.group_by)) : "status";
       const { tickets } = listTickets(db, {
-        status: arrayFilter<Status>(req.query.status, StatusSchema, "status"),
-        type: arrayFilter<TicketType>(req.query.type, TicketTypeSchema, "type"),
-        priority: arrayFilter<Priority>(req.query.priority, PrioritySchema, "priority"),
-        tags: asArray(req.query.tags),
+        filter: asString(req.query.filter),
         limit: 200,
       });
       res.status(200).json({ board: renderBoard(tickets, groupBy) });

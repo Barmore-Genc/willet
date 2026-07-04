@@ -618,10 +618,10 @@ describe("Willet HTTP Server E2E", () => {
       const updateTool = body.result.tools.find((t) => t.name === "update_ticket")!;
       const listTool = body.result.tools.find((t) => t.name === "list_tickets")!;
 
-      // All three should have assignee in their schemas
+      // create/update expose assignee directly; list filters on it via `filter`.
       expect(createTool.inputSchema.properties).toHaveProperty("assignee");
       expect(updateTool.inputSchema.properties).toHaveProperty("assignee");
-      expect(listTool.inputSchema.properties).toHaveProperty("assignee");
+      expect(listTool.inputSchema.properties).toHaveProperty("filter");
 
       // create_ticket should require assignee
       expect(createTool.inputSchema.required).toContain("assignee");
@@ -762,7 +762,7 @@ describe("Willet HTTP Server E2E", () => {
 
       // Filter for alice
       const aliceRes = (await mcpPost(
-        mcpToolCall(id(), "list_tickets", { project_id: projectId, assignee: "alice" })
+        mcpToolCall(id(), "list_tickets", { project_id: projectId, filter: "assignee = 'alice'" })
       )) as { result?: { content: Array<{ text: string }> } };
       const aliceText = aliceRes.result!.content[0].text;
       expect(aliceText).toContain("Alice's ticket");
@@ -770,7 +770,7 @@ describe("Willet HTTP Server E2E", () => {
 
       // Filter for bob
       const bobRes = (await mcpPost(
-        mcpToolCall(id(), "list_tickets", { project_id: projectId, assignee: "bob" })
+        mcpToolCall(id(), "list_tickets", { project_id: projectId, filter: "assignee = 'bob'" })
       )) as { result?: { content: Array<{ text: string }> } };
       const bobText = bobRes.result!.content[0].text;
       expect(bobText).toContain("Bob's ticket");
@@ -796,9 +796,9 @@ describe("Willet HTTP Server E2E", () => {
         project_id: projectId, title: "Still assigned", assignee: "bob",
       }));
 
-      // Filter for unassigned (assignee: null)
+      // Filter for unassigned
       const unassignedRes = (await mcpPost(
-        mcpToolCall(id(), "list_tickets", { project_id: projectId, assignee: null })
+        mcpToolCall(id(), "list_tickets", { project_id: projectId, filter: "assignee IS NULL" })
       )) as { result?: { content: Array<{ text: string }> } };
       const text = unassignedRes.result!.content[0].text;
       expect(text).toContain("Was assigned");

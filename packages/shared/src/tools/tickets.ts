@@ -98,7 +98,14 @@ export function registerTicketTools(server: McpServer, options: ToolOptions): vo
       if (include_history) result.history = getHistory(db, ticket_id);
       result.links = getLinks(db, ticket_id);
       if (include_subtickets) {
-        const { tickets: subtickets } = listTickets(db, { parent_ticket_id: ticket_id });
+        const { tickets: subtickets } = listTickets(db, {
+          filter: {
+            node: "compare",
+            field: "parent_ticket_id",
+            op: "=",
+            value: { kind: "string", value: ticket_id },
+          },
+        });
         result.subtickets = projectTickets(subtickets, v, options);
       }
 

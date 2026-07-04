@@ -56,18 +56,15 @@ async function loadView(name: string): Promise<string> {
 }
 
 export function registerQueryTools(server: McpServer, options: ToolOptions): void {
-  const listSchema =
-    options.mode === "local"
-      ? withProjectId(ListTicketsInputSchema.omit({ assignee: true }))
-      : withProjectId(ListTicketsInputSchema);
+  const queryMode: "local" | "http" = options.mode === "local" ? "local" : "http";
 
   server.tool(
     "list_tickets",
-    "List tickets with structured filtering (status, type, priority, tags, dates, parent). All filters use AND semantics. `verbosity` controls output: 'short' (id/title/status/type/priority/estimate/assignee/tags/due_date), 'detailed' (all fields, description truncated, default), or 'full' (all fields, no truncation).",
-    listSchema.shape,
+    "List tickets, optionally narrowed by a `filter` predicate (see the filter parameter for the language). `verbosity` controls output: 'short' (id/title/status/type/priority/estimate/assignee/tags/due_date), 'detailed' (all fields, description truncated, default), or 'full' (all fields, no truncation).",
+    withProjectId(ListTicketsInputSchema).shape,
     async ({ project_id, verbosity, ...input }) => {
       const db = resolveDb(project_id);
-      const result = listTickets(db, input);
+      const result = listTickets(db, { ...input, mode: queryMode });
       const mode: Verbosity = verbosity ?? "detailed";
       return {
         content: [{ type: "text", text: JSON.stringify({ ...result, tickets: projectTickets(result.tickets, mode, options) }, null, 2) }],
@@ -77,11 +74,11 @@ export function registerQueryTools(server: McpServer, options: ToolOptions): voi
 
   server.tool(
     "search_tickets",
-    "Search tickets using text (FTS5), semantic (vector similarity), or hybrid (both with reciprocal rank fusion) mode. `verbosity` controls output: 'short', 'detailed' (default), or 'full'.",
+    "Search tickets using text (FTS5), semantic (vector similarity), or hybrid (both with reciprocal rank fusion) mode, optionally narrowed by a `filter` predicate. `verbosity` controls output: 'short', 'detailed' (default), or 'full'.",
     withProjectId(SearchTicketsInputSchema).shape,
-    async ({ project_id, query, mode, status, type, priority, limit, verbosity }) => {
+    async ({ project_id, query, mode, filter, limit, verbosity }) => {
       const db = resolveDb(project_id);
-      const results = await searchTickets(db, query, { mode, status, type, priority, limit });
+      const results = await searchTickets(db, query, { mode, filter, limit, queryMode });
       const v: Verbosity = verbosity ?? "detailed";
       return {
         content: [{ type: "text", text: JSON.stringify(projectTickets(results, v, options), null, 2) }],
