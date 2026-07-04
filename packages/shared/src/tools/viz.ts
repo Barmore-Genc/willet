@@ -199,9 +199,13 @@ export function registerVizTools(server: McpServer, options: ToolOptions): void 
       inputSchema: withProjectId(RenderTicketBoardInputSchema).shape,
       _meta: { ui: { resourceUri: boardUri } },
     },
-    async ({ project_id, group_by, ...filters }) => {
+    async ({ project_id, group_by, filter }) => {
       const db = resolveDb(project_id);
-      const { tickets } = listTickets(db, { ...filters, limit: 200 });
+      const { tickets } = listTickets(db, {
+        filter,
+        limit: 200,
+        mode: options.mode === "local" ? "local" : "http",
+      });
       const groupBy = group_by ?? "status";
       const showAssignee = options.mode === "selfhosted";
       const board = renderBoard(tickets, groupBy, showAssignee);

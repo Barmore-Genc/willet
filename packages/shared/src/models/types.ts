@@ -37,12 +37,6 @@ export type GroupBy = z.infer<typeof GroupBySchema>;
 export const VerbositySchema = z.enum(["short", "detailed", "full"]);
 export type Verbosity = z.infer<typeof VerbositySchema>;
 
-// --- Helper: accept single value or array ---
-
-function stringOrArray<T extends z.ZodType<string>>(schema: T) {
-  return z.union([schema, z.array(schema)]);
-}
-
 // --- Entity types ---
 
 export interface Project {
@@ -232,10 +226,7 @@ export const GetTicketGraphInputSchema = z.object({
 
 export const RenderTicketBoardInputSchema = z.object({
   group_by: GroupBySchema.optional(),
-  status: stringOrArray(StatusSchema).optional(),
-  type: stringOrArray(TicketTypeSchema).optional(),
-  priority: stringOrArray(PrioritySchema).optional(),
-  tags: z.array(z.string()).optional(),
+  filter: FilterSchema.optional(),
 });
 
 export const GetProjectStatsInputSchema = z.object({});
