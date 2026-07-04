@@ -212,3 +212,136 @@ describe("compileFilter execution", () => {
     expect(matchIds("due_date < now()")).toEqual([a]);
   });
 });
+
+// --- Robustness: SQL-injection-style payloads stay data, never SQL ---
+//
+// The compiler's defense is that every user-supplied value (strings, numbers,
+// dates, tag names, metadata values, and the metadata JSON path) is bound as a
+// `?` parameter; only fixed catalog column names and the developer-supplied
+// table alias are ever interpolated into the SQL text. These tests assert that
+// invariant holds against classic injection payloads: the compiled `where`
+// contains no fragment of the payload, and executing it against real SQLite
+// neither errors, drops the table, nor matches rows it shouldn't.
+
+describe("compileFilter injection robustness", () => {
+  // Payloads that, if interpolated, would break out of a string literal or
+  // change the statement. All are used as *values*, where they must be inert.
+  const PAYLOADS = [
+    "'; DROP TABLE tickets; --",
+    "' OR '1'='1",
+    "' OR 1=1 --",
+    "x'); DELETE FROM tickets; --",
+    "admin'--",
+    "1; DELETE FROM tickets",
+    "%' OR tags LIKE '%",
+    "/* comment */",
+    "  null byte",
+    "back\\slash",
+    "'||(SELECT id FROM tickets)||'",
+  ];
+
+  it("binds every payload as a parameter and never interpolates it", () => {
+    for (const p of PAYLOADS) {
+      // A single-quoted string literal doubles embedded quotes.
+      const literal = `'${p.replace(/'/g, "''")}'`;
+      const { where, params } = compileFilter(`assignee = ${literal}`);
+      // Structure is a bare parameterized comparison.
+      expect(where).toBe("tickets.assignee = ?");
+      // The payload rides entirely in params, verbatim.
+      expect(params).toEqual([p]);
+      // No fragment of the payload leaked into the SQL text.
+      for (const marker of ["DROP", "DELETE", "--", ";", "OR", "/*"]) {
+        expect(where).not.toContain(marker);
+      }
+    }
+  });
+
+  it("does not let quote-doubling break out of a string literal", () => {
+    // Decodes to the single literal:  open' OR '1'='1
+    const { where, params } = compileFilter("assignee = 'open'' OR ''1''=''1'");
+    expect(where).toBe("tickets.assignee = ?");
+    expect(params).toEqual(["open' OR '1'='1"]);
+  });
+
+  it("binds payloads in tag membership and metadata comparisons too", () => {
+    // Value decodes to:  '; DROP TABLE tickets; --  (leading quote doubled)
+    const tag = compileFilter("'''; DROP TABLE tickets; --' IN tags");
+    expect(tag.where).toBe("EXISTS (SELECT 1 FROM json_each(tickets.tags) WHERE value = ?)");
+    expect(tag.params).toEqual(["'; DROP TABLE tickets; --"]);
+
+    const meta = compileFilter("metadata.team = ''' OR 1=1 --'");
+    expect(meta.where).toBe("json_extract(tickets.metadata, ?) = ?");
+    expect(meta.params).toEqual(["$.team", "' OR 1=1 --"]);
+  });
+
+  it("rejects malformed / adversarial syntax as a QueryError, never a crash", () => {
+    const malformed = [
+      "assignee = 'open", // unterminated string
+      "assignee = 'open';", // trailing statement terminator
+      "assignee = 'open'; DROP TABLE tickets", // stacked statement
+      "; DROP TABLE tickets", // bare terminator
+      "assignee = ", // missing value
+      "((((status = 'open')", // unbalanced parens
+    ];
+    for (const f of malformed) {
+      expect(() => compileFilter(f), f).toThrow(QueryError);
+    }
+  });
+
+  it("treats a backslash as an ordinary character, not an escape", () => {
+    // `\` does not escape the closing quote — the string closes normally and
+    // the backslash rides along as literal data.
+    const { where, params } = compileFilter("assignee = 'a\\'");
+    expect(where).toBe("tickets.assignee = ?");
+    expect(params).toEqual(["a\\"]);
+  });
+
+  describe("against real SQLite", () => {
+    let db: Database.Database;
+
+    function count(): number {
+      return (db.prepare("SELECT count(*) AS n FROM tickets").get() as { n: number }).n;
+    }
+
+    beforeEach(() => {
+      db = new Database(":memory:");
+      applySchema(db);
+      const now = new Date().toISOString();
+      // A canary row that must survive and never be matched by a payload.
+      db.prepare(
+        `INSERT INTO tickets (id, title, description, status, type, priority, tags, assignee, created_at, updated_at, metadata)
+         VALUES ('canary', '', '', 'open', 'chore', 'medium', '[]', 'realuser', ?, ?, '{}')`
+      ).run(now, now);
+    });
+
+    it("treats payloads as literals: table survives, no rows match", () => {
+      for (const p of PAYLOADS) {
+        const literal = `'${p.replace(/'/g, "''")}'`;
+        const { where, params } = compileFilter(`assignee = ${literal}`);
+        // The statement is single, well-formed SQL; better-sqlite3 rejects
+        // multi-statement text at prepare time, so this both compiles and runs.
+        const rows = db.prepare(`SELECT id FROM tickets WHERE ${where}`).all(...params);
+        expect(rows).toEqual([]); // no assignee equals the payload string
+      }
+      // Table and its one row are untouched by any payload.
+      expect(count()).toBe(1);
+      expect(
+        db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='tickets'").get()
+      ).toBeTruthy();
+    });
+
+    it("matches a value that literally equals an injection-looking string", () => {
+      const now = new Date().toISOString();
+      db.prepare(
+        `INSERT INTO tickets (id, title, description, status, type, priority, tags, assignee, created_at, updated_at, metadata)
+         VALUES ('evil', '', '', 'open', 'chore', 'medium', '[]', ?, ?, ?, '{}')`
+      ).run("' OR '1'='1", now, now);
+      const { where, params } = compileFilter("assignee = ''' OR ''1''=''1'");
+      const ids = (db.prepare(`SELECT id FROM tickets WHERE ${where}`).all(...params) as Array<{ id: string }>).map(
+        (r) => r.id
+      );
+      // Exactly the row whose assignee IS that literal string — not the canary.
+      expect(ids).toEqual(["evil"]);
+    });
+  });
+});
