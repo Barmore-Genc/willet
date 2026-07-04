@@ -24,17 +24,11 @@ export function registerRenderCommands(program: Command, deps: RunDeps = {}): vo
     .description("Render a kanban board (markdown)")
     .requiredOption("-p, --project <projectId>", "Project ID (UUID)")
     .option("--group-by <field>", "status | priority | type")
-    .option("--status <status...>")
-    .option("--type <type...>")
-    .option("--priority <priority...>")
-    .option("--tags <tag...>")
+    .option("--filter <expr>", "Filter predicate, e.g. \"priority >= 'high'\"")
     .action(async (o, cmd: Command) => {
       const query: Query<"/projects/{projectId}/board", "get"> = {
         group_by: o.groupBy as Schemas["GroupBy"] | undefined,
-        status: o.status as Schemas["Status"][] | undefined,
-        type: o.type as Schemas["TicketType"][] | undefined,
-        priority: o.priority as Schemas["Priority"][] | undefined,
-        tags: o.tags as string[] | undefined,
+        filter: o.filter as string | undefined,
       };
       process.exitCode = await run(
         json(cmd),
