@@ -8,7 +8,7 @@ import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { WilletAuthProvider } from "./auth/provider.js";
-import { runAsUser } from "@willet/shared";
+import { initEmbeddings, runAsUser } from "@willet/shared";
 import { createRestRouter } from "./rest/router.js";
 import { restApiEnabled, type WilletConfig } from "./config.js";
 
@@ -29,6 +29,12 @@ export async function startHttpServer(
   createServer: (serverOptions: { validAssignees: string[] }) => Promise<McpServer>,
   options?: { skipProcessHandlers?: boolean }
 ): Promise<HttpServerHandle> {
+  // The REST routes call the @willet/shared query functions directly, so they
+  // never go through `createServer()` — the only other place embeddings get
+  // initialized. Without this, ticket create and semantic search throw until an
+  // MCP client happens to connect first. No-op when a custom embedder is set.
+  await initEmbeddings();
+
   const provider = new WilletAuthProvider(config);
   const baseUrl = new URL(config.server.base_url);
   const mcpUrl = new URL("/mcp", baseUrl);

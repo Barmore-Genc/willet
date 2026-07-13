@@ -650,19 +650,23 @@ export function listTickets(
 
 // --- Search ---
 
-// Build an FTS5 MATCH expression from a free-text query for hybrid mode.
+// Build an FTS5 MATCH expression from a free-text query.
 // Each whitespace-separated term is wrapped in a double-quoted string so FTS5
 // treats it as a literal, not as query syntax. Without this, a term containing
 // special syntax (a column filter like `in:progress`, a prefix `*`, a bare
 // keyword like `OR`/`NEAR`, or an unbalanced `"`) makes FTS5 raise a syntax or
 // "no such column" error and the whole search fails. Internal double quotes are
 // escaped by doubling, per FTS5 string-literal rules.
-function buildHybridMatchExpr(query: string): string {
+//
+// Text mode joins terms with FTS5's implicit AND (every term must appear);
+// hybrid mode ORs them, since recall matters more there — RRF re-ranks against
+// the vector hits anyway.
+function buildMatchExpr(query: string, join: "AND" | "OR"): string {
   return query
     .split(/\s+/)
     .filter(Boolean)
     .map((term) => `"${term.replace(/"/g, '""')}"`)
-    .join(" OR ");
+    .join(join === "OR" ? " OR " : " ");
 }
 
 export interface SearchTicketsOptions {
@@ -696,6 +700,9 @@ export async function searchTickets(
   }
 
   if (mode === "text") {
+    const matchExpr = buildMatchExpr(query, "AND");
+    if (!matchExpr) return [];
+
     // FTS join aliases the tickets table as `t`; compile against that alias.
     const { where, params } = compileFilter(opts.filter ?? "", {
       mode: opts.queryMode,
@@ -711,7 +718,7 @@ export async function searchTickets(
          ORDER BY fts.rank
          LIMIT ?`
       )
-      .all(query, ...params, limit) as (TicketRow & { score: number })[];
+      .all(matchExpr, ...params, limit) as (TicketRow & { score: number })[];
 
     return rows.map((r) => ({ ...rowToTicket(r), score: r.score }));
   }
@@ -750,7 +757,7 @@ export async function searchTickets(
   const k = 60;
 
   // FTS results
-  const matchExpr = buildHybridMatchExpr(query);
+  const matchExpr = buildMatchExpr(query, "OR");
   const ftsRows = matchExpr
     ? (db
         .prepare(
