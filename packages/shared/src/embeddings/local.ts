@@ -2,6 +2,10 @@ import { pipeline, type FeatureExtractionPipeline } from "@huggingface/transform
 
 let extractor: FeatureExtractionPipeline | null = null;
 
+/** `model:dtype` of the currently loaded pipeline, so a repeat init is a no-op
+ * but a switch to a different model or quantization still reloads. */
+let loadedKey: string | null = null;
+
 const DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2";
 
 /** Embedding dimension of the default model. The live dimension in use may
@@ -46,10 +50,18 @@ export async function initEmbeddings(options?: string | InitEmbeddingsOptions): 
   if (customEmbedder) return; // skip model loading when a custom embedder is set
 
   const modelName = opts.model ?? DEFAULT_MODEL;
+  const dtype = opts.dtype ?? "fp32";
+
+  // Callers legitimately init more than once — the HTTP server does it at
+  // startup, and createServer() does it again per MCP session. Reloading the
+  // same pipeline costs seconds and a second copy of the weights, so only load
+  // when the request actually differs from what's already resident.
+  const key = `${modelName}:${dtype}`;
+  if (extractor && loadedKey === key) return;
+
   console.error(`Loading ${modelName}...`);
-  extractor = await pipeline("feature-extraction", modelName, {
-    dtype: opts.dtype ?? "fp32",
-  });
+  extractor = await pipeline("feature-extraction", modelName, { dtype });
+  loadedKey = key;
   // Probe once to discover the model's actual output dimension.
   const probe = await localEmbed("probe");
   activeDim = probe.length;
