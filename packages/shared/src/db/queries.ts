@@ -11,6 +11,8 @@ import {
   type EmbeddingTransform,
 } from "../embeddings/local.js";
 import { applySchema, applyRegistrySchema } from "./schema.js";
+import { compileFilter } from "../query/compile.js";
+import type { FilterExpr } from "../query/ast.js";
 import type {
   Project,
   Ticket,
@@ -602,118 +604,41 @@ export function getHistory(db: Database.Database, ticketId: string): TicketHisto
 
 // --- List tickets ---
 
-function toArray<T>(value: T | T[] | undefined): T[] | undefined {
-  if (value === undefined) return undefined;
-  return Array.isArray(value) ? value : [value];
+export interface ListTicketsOptions {
+  /**
+   * Boolean filter predicate — either the source string of the ticket filter
+   * language or a pre-parsed AST. Omit (or pass empty) for no filtering.
+   */
+  filter?: string | FilterExpr;
+  sort?: SortField;
+  sort_direction?: SortDirection;
+  limit?: number;
+  offset?: number;
+  /** Local (stdio) mode hides multi-user fields like `assignee` from filters. */
+  mode?: "local" | "http";
 }
 
 export function listTickets(
   db: Database.Database,
-  filters: {
-    status?: Status | Status[];
-    type?: TicketType | TicketType[];
-    priority?: Priority | Priority[];
-    tags?: string[];
-    parent_ticket_id?: string | null;
-    assignee?: string | null;
-    created_after?: string;
-    created_before?: string;
-    completed_after?: string;
-    completed_before?: string;
-    due_after?: string;
-    due_before?: string;
-    sort?: SortField;
-    sort_direction?: SortDirection;
-    limit?: number;
-    offset?: number;
-  }
+  opts: ListTicketsOptions = {}
 ): { tickets: Ticket[]; total: number } {
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  const { where, params } = compileFilter(opts.filter ?? "", { mode: opts.mode });
+  const whereClause = where ? `WHERE ${where}` : "";
 
-  const statusArr = toArray(filters.status);
-  if (statusArr) {
-    conditions.push(`status IN (${statusArr.map(() => "?").join(", ")})`);
-    params.push(...statusArr);
-  }
-
-  const typeArr = toArray(filters.type);
-  if (typeArr) {
-    conditions.push(`type IN (${typeArr.map(() => "?").join(", ")})`);
-    params.push(...typeArr);
-  }
-
-  const priorityArr = toArray(filters.priority);
-  if (priorityArr) {
-    conditions.push(`priority IN (${priorityArr.map(() => "?").join(", ")})`);
-    params.push(...priorityArr);
-  }
-
-  if (filters.tags && filters.tags.length > 0) {
-    conditions.push(
-      `(SELECT COUNT(*) FROM json_each(tickets.tags) WHERE json_each.value IN (${filters.tags.map(() => "?").join(", ")})) = ?`
-    );
-    params.push(...filters.tags, filters.tags.length);
-  }
-
-  if (filters.parent_ticket_id !== undefined) {
-    if (filters.parent_ticket_id === null) {
-      conditions.push("parent_ticket_id IS NULL");
-    } else {
-      conditions.push("parent_ticket_id = ?");
-      params.push(filters.parent_ticket_id);
-    }
-  }
-
-  if (filters.assignee !== undefined) {
-    if (filters.assignee === null) {
-      conditions.push("assignee IS NULL");
-    } else {
-      conditions.push("assignee = ?");
-      params.push(filters.assignee);
-    }
-  }
-
-  if (filters.created_after) {
-    conditions.push("created_at > ?");
-    params.push(filters.created_after);
-  }
-  if (filters.created_before) {
-    conditions.push("created_at < ?");
-    params.push(filters.created_before);
-  }
-  if (filters.completed_after) {
-    conditions.push("completed_at > ?");
-    params.push(filters.completed_after);
-  }
-  if (filters.completed_before) {
-    conditions.push("completed_at < ?");
-    params.push(filters.completed_before);
-  }
-  if (filters.due_after) {
-    conditions.push("due_date > ?");
-    params.push(filters.due_after);
-  }
-  if (filters.due_before) {
-    conditions.push("due_date < ?");
-    params.push(filters.due_before);
-  }
-
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  const sort = filters.sort ?? "created_at";
-  const dir = filters.sort_direction ?? "desc";
-  const limit = filters.limit ?? 50;
-  const offset = filters.offset ?? 0;
+  const sort = opts.sort ?? "created_at";
+  const dir = opts.sort_direction ?? "desc";
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
   // Tickets without a due date should sort after tickets with one, regardless of direction.
   const nullsClause = sort === "due_date" ? " NULLS LAST" : "";
 
   const countRow = db
-    .prepare(`SELECT COUNT(*) as total FROM tickets ${where}`)
+    .prepare(`SELECT COUNT(*) as total FROM tickets ${whereClause}`)
     .get(...params) as { total: number };
 
   const rows = db
     .prepare(
-      `SELECT * FROM tickets ${where} ORDER BY ${sort} ${dir}${nullsClause} LIMIT ? OFFSET ?`
+      `SELECT * FROM tickets ${whereClause} ORDER BY ${sort} ${dir}${nullsClause} LIMIT ? OFFSET ?`
     )
     .all(...params, limit, offset) as TicketRow[];
 
@@ -740,59 +665,49 @@ function buildHybridMatchExpr(query: string): string {
     .join(" OR ");
 }
 
+export interface SearchTicketsOptions {
+  mode?: SearchMode;
+  /** Boolean filter predicate (filter-language string or AST) to narrow results. */
+  filter?: string | FilterExpr;
+  limit?: number;
+  /** Local (stdio) mode hides multi-user fields like `assignee` from filters. */
+  queryMode?: "local" | "http";
+}
+
 export async function searchTickets(
   db: Database.Database,
   query: string,
-  opts: {
-    mode?: SearchMode;
-    status?: Status | Status[];
-    type?: TicketType | TicketType[];
-    priority?: Priority | Priority[];
-    limit?: number;
-  } = {},
+  opts: SearchTicketsOptions = {},
   transform?: EmbeddingTransform
 ): Promise<Array<Ticket & { score: number }>> {
   const mode = opts.mode ?? "hybrid";
   const limit = opts.limit ?? 20;
-  const statusArr = toArray(opts.status);
-  const typeArr = toArray(opts.type);
-  const priorityArr = toArray(opts.priority);
 
-  function matchesFilters(ticket: Ticket): boolean {
-    if (statusArr && !statusArr.includes(ticket.status)) return false;
-    if (typeArr && !typeArr.includes(ticket.type)) return false;
-    if (priorityArr && !priorityArr.includes(ticket.priority)) return false;
-    return true;
-  }
-
-  // Build SQL WHERE clauses for filters
-  function sqlFilters(): { where: string; params: unknown[] } {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-    if (statusArr) {
-      clauses.push(`status IN (${statusArr.map(() => "?").join(", ")})`);
-      params.push(...statusArr);
-    }
-    if (typeArr) {
-      clauses.push(`type IN (${typeArr.map(() => "?").join(", ")})`);
-      params.push(...typeArr);
-    }
-    if (priorityArr) {
-      clauses.push(`priority IN (${priorityArr.map(() => "?").join(", ")})`);
-      params.push(...priorityArr);
-    }
-    const where = clauses.length > 0 ? ` AND ${clauses.join(" AND ")}` : "";
-    return { where, params };
+  // Restrict a set of candidate ids to those a ticket-table predicate accepts.
+  // Used by the semantic/hybrid paths, which rank first then filter.
+  const idFilter = compileFilter(opts.filter ?? "", { mode: opts.queryMode, table: "tickets" });
+  function passesFilter(ids: string[]): Set<string> {
+    if (!idFilter.where || ids.length === 0) return new Set(ids);
+    const placeholders = ids.map(() => "?").join(", ");
+    const rows = db
+      .prepare(`SELECT id FROM tickets WHERE id IN (${placeholders}) AND (${idFilter.where})`)
+      .all(...ids, ...idFilter.params) as Array<{ id: string }>;
+    return new Set(rows.map((r) => r.id));
   }
 
   if (mode === "text") {
-    const { where, params } = sqlFilters();
+    // FTS join aliases the tickets table as `t`; compile against that alias.
+    const { where, params } = compileFilter(opts.filter ?? "", {
+      mode: opts.queryMode,
+      table: "t",
+    });
+    const filterClause = where ? ` AND (${where})` : "";
     const rows = db
       .prepare(
         `SELECT t.*, fts.rank as score
          FROM tickets_fts fts
          JOIN tickets t ON t.rowid = fts.rowid
-         WHERE tickets_fts MATCH ?${where}
+         WHERE tickets_fts MATCH ?${filterClause}
          ORDER BY fts.rank
          LIMIT ?`
       )
@@ -819,12 +734,13 @@ export async function searchTickets(
 
   if (mode === "semantic") {
     const knnRows = await knnSearch(limit * 5);
+    const allowed = passesFilter(knnRows.map((r) => r.id));
     const results: Array<Ticket & { score: number }> = [];
     for (const row of knnRows) {
       if (results.length >= limit) break;
+      if (!allowed.has(row.id)) continue;
       const ticket = getTicketById(db, row.id);
       if (!ticket) continue;
-      if (!matchesFilters(ticket)) continue;
       results.push({ ...ticket, score: 1 - row.distance });
     }
     return results;
@@ -862,12 +778,13 @@ export async function searchTickets(
 
   const sorted = [...rrfScores.entries()].sort((a, b) => b[1] - a[1]);
 
+  const allowed = passesFilter(sorted.map(([id]) => id));
   const results: Array<Ticket & { score: number }> = [];
   for (const [id, score] of sorted) {
     if (results.length >= limit) break;
+    if (!allowed.has(id)) continue;
     const ticket = getTicketById(db, id);
     if (!ticket) continue;
-    if (!matchesFilters(ticket)) continue;
     results.push({ ...ticket, score });
   }
   return results;

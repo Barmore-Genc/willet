@@ -491,7 +491,7 @@ describe("Willet MCP stdio E2E", () => {
     // List only open tasks
     const openList = await client.callTool({
       name: "list_tickets",
-      arguments: { project_id: projectId, status: "open" },
+      arguments: { project_id: projectId, filter: "status = 'open'" },
     });
     const openText = (openList.content as Array<{ text: string }>)[0].text;
     expect(openText).toContain("Open task");
@@ -500,7 +500,7 @@ describe("Willet MCP stdio E2E", () => {
     // List only done tasks
     const doneList = await client.callTool({
       name: "list_tickets",
-      arguments: { project_id: projectId, status: "done" },
+      arguments: { project_id: projectId, filter: "status = 'done'" },
     });
     const doneText = (doneList.content as Array<{ text: string }>)[0].text;
     expect(doneText).toContain("Done task");

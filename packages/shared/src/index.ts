@@ -92,6 +92,25 @@ export {
 export type { TicketWithExtras, ExportTicketJson, ImportResult } from "./export.js";
 export { runExportCli, runImportCli } from "./export-cli.js";
 
+// Ticket filter language: the single predicate surface for list/search.
+export {
+  parseFilter,
+  compileFilter,
+  QueryError,
+  CATALOG,
+  PRIORITY_VALUES,
+  STATUS_VALUES,
+  TYPE_VALUES,
+} from "./query/index.js";
+export type {
+  CompileOptions,
+  CompiledFilter,
+  FilterExpr,
+  CompareOp,
+  Literal,
+  Interval,
+} from "./query/index.js";
+
 export async function createServer(options?: { embeddingModel?: string | InitEmbeddingsOptions; mode?: "local" | "selfhosted"; validAssignees?: string[] }): Promise<McpServer> {
   await initEmbeddings(options?.embeddingModel);
 

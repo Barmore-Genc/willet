@@ -37,15 +37,10 @@ const int = (v: string | undefined): number | undefined => (v === undefined ? un
 // trust boundary. Typing the literal (rather than casting it `as never` at the
 // call site) keeps openapi-fetch checking parameter names and value types.
 
-/** Build the shared ticket filter query from parsed options. */
+/** Build the shared ticket list query from parsed options. */
 function filterQuery(o: Record<string, unknown>): Query<"/projects/{projectId}/tickets", "get"> {
   const q: Query<"/projects/{projectId}/tickets", "get"> = {
-    status: o.status as Schemas["Status"][] | undefined,
-    type: o.type as Schemas["TicketType"][] | undefined,
-    priority: o.priority as Schemas["Priority"][] | undefined,
-    tags: o.tags as string[] | undefined,
-    parent_ticket_id: o.parent as string | undefined,
-    assignee: o.assignee as string | undefined,
+    filter: o.filter as string | undefined,
     sort: o.sort as Schemas["SortField"] | undefined,
     sort_direction: o.sortDirection as Schemas["SortDirection"] | undefined,
     limit: int(o.limit as string | undefined),
@@ -55,16 +50,14 @@ function filterQuery(o: Record<string, unknown>): Query<"/projects/{projectId}/t
   return drop(q);
 }
 
+const FILTER_HELP =
+  "Filter predicate, e.g. \"status IN ('open','in_progress') AND priority >= 'high'\"";
+
 export function registerTicketCommands(program: Command, deps: RunDeps = {}): void {
   const ticket = program.command("ticket").description("Manage tickets in a project");
 
   project(ticket.command("list").description("List tickets"))
-    .option("--status <status...>", "Filter by status")
-    .option("--type <type...>", "Filter by type")
-    .option("--priority <priority...>", "Filter by priority")
-    .option("--tags <tag...>", "Filter by tags")
-    .option("--parent <ticketId>", "Filter by parent ticket")
-    .option("--assignee <assignee>", "Filter by assignee")
+    .option("--filter <expr>", FILTER_HELP)
     .option("--sort <field>", "Sort field")
     .option("--sort-direction <dir>", "asc or desc")
     .option("--limit <n>", "Max results")
@@ -85,18 +78,14 @@ export function registerTicketCommands(program: Command, deps: RunDeps = {}): vo
   project(ticket.command("search").description("Search tickets (text, semantic, or hybrid)"))
     .argument("<query>", "Search query")
     .option("--mode <mode>", "text | semantic | hybrid")
-    .option("--status <status...>", "Filter by status")
-    .option("--type <type...>", "Filter by type")
-    .option("--priority <priority...>", "Filter by priority")
+    .option("--filter <expr>", FILTER_HELP)
     .option("--limit <n>", "Max results")
     .option("--verbosity <v>", "short | detailed | full")
     .action(async (query: string, o, cmd: Command) => {
       const q: Query<"/projects/{projectId}/tickets/search", "get"> = {
         query,
         mode: o.mode as Schemas["SearchMode"] | undefined,
-        status: o.status as Schemas["Status"][] | undefined,
-        type: o.type as Schemas["TicketType"][] | undefined,
-        priority: o.priority as Schemas["Priority"][] | undefined,
+        filter: o.filter as string | undefined,
         limit: int(o.limit),
         verbosity: o.verbosity as Schemas["Verbosity"] | undefined,
       };

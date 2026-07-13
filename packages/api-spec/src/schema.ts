@@ -961,16 +961,10 @@ export interface components {
         UserId: string;
         /** @description Repository mapping ID from listGithubRepos. */
         MappingId: string;
-        /** @description Filter by one or more statuses. */
-        QStatus: components["schemas"]["Status"][];
-        /** @description Filter by one or more types. */
-        QType: components["schemas"]["TicketType"][];
-        /** @description Filter by one or more priorities. */
-        QPriority: components["schemas"]["Priority"][];
-        /** @description Filter by one or more tags. */
-        QTags: string[];
         /** @description Projection detail level. */
         QVerbosity: components["schemas"]["Verbosity"];
+        /** @description Boolean filter predicate over ticket fields (the Willet filter language). Combine terms with AND/OR/NOT and parentheses; operators =, !=, <, <=, >, >=, IN, NOT IN, IS [NOT] NULL. Fields include status, type, priority, assignee, parent_ticket_id, id, estimate, actual, created_at, updated_at, completed_at, due_date, and metadata.<key>. priority compares by severity; dates accept ISO strings or now()/today() with offsets like now() - 7d. Tag membership: 'ui' IN tags. No text/substring match (use search). */
+        QFilter: string;
     };
     requestBodies: never;
     headers: never;
@@ -1003,22 +997,8 @@ export interface operations {
     listTickets: {
         parameters: {
             query?: {
-                /** @description Filter by one or more statuses. */
-                status?: components["parameters"]["QStatus"];
-                /** @description Filter by one or more types. */
-                type?: components["parameters"]["QType"];
-                /** @description Filter by one or more priorities. */
-                priority?: components["parameters"]["QPriority"];
-                /** @description Filter by one or more tags. */
-                tags?: components["parameters"]["QTags"];
-                parent_ticket_id?: string;
-                assignee?: string;
-                created_after?: string;
-                created_before?: string;
-                completed_after?: string;
-                completed_before?: string;
-                due_after?: string;
-                due_before?: string;
+                /** @description Boolean filter predicate over ticket fields (the Willet filter language). Combine terms with AND/OR/NOT and parentheses; operators =, !=, <, <=, >, >=, IN, NOT IN, IS [NOT] NULL. Fields include status, type, priority, assignee, parent_ticket_id, id, estimate, actual, created_at, updated_at, completed_at, due_date, and metadata.<key>. priority compares by severity; dates accept ISO strings or now()/today() with offsets like now() - 7d. Tag membership: 'ui' IN tags. No text/substring match (use search). */
+                filter?: components["parameters"]["QFilter"];
                 sort?: components["schemas"]["SortField"];
                 sort_direction?: components["schemas"]["SortDirection"];
                 limit?: number;
@@ -1084,14 +1064,10 @@ export interface operations {
     searchTickets: {
         parameters: {
             query: {
+                /** @description Boolean filter predicate over ticket fields (the Willet filter language). Combine terms with AND/OR/NOT and parentheses; operators =, !=, <, <=, >, >=, IN, NOT IN, IS [NOT] NULL. Fields include status, type, priority, assignee, parent_ticket_id, id, estimate, actual, created_at, updated_at, completed_at, due_date, and metadata.<key>. priority compares by severity; dates accept ISO strings or now()/today() with offsets like now() - 7d. Tag membership: 'ui' IN tags. No text/substring match (use search). */
+                filter?: components["parameters"]["QFilter"];
                 query: string;
                 mode?: components["schemas"]["SearchMode"];
-                /** @description Filter by one or more statuses. */
-                status?: components["parameters"]["QStatus"];
-                /** @description Filter by one or more types. */
-                type?: components["parameters"]["QType"];
-                /** @description Filter by one or more priorities. */
-                priority?: components["parameters"]["QPriority"];
                 limit?: number;
                 /** @description Projection detail level. */
                 verbosity?: components["parameters"]["QVerbosity"];
@@ -1546,15 +1522,9 @@ export interface operations {
     renderTicketBoard: {
         parameters: {
             query?: {
+                /** @description Boolean filter predicate over ticket fields (the Willet filter language). Combine terms with AND/OR/NOT and parentheses; operators =, !=, <, <=, >, >=, IN, NOT IN, IS [NOT] NULL. Fields include status, type, priority, assignee, parent_ticket_id, id, estimate, actual, created_at, updated_at, completed_at, due_date, and metadata.<key>. priority compares by severity; dates accept ISO strings or now()/today() with offsets like now() - 7d. Tag membership: 'ui' IN tags. No text/substring match (use search). */
+                filter?: components["parameters"]["QFilter"];
                 group_by?: components["schemas"]["GroupBy"];
-                /** @description Filter by one or more statuses. */
-                status?: components["parameters"]["QStatus"];
-                /** @description Filter by one or more types. */
-                type?: components["parameters"]["QType"];
-                /** @description Filter by one or more priorities. */
-                priority?: components["parameters"]["QPriority"];
-                /** @description Filter by one or more tags. */
-                tags?: components["parameters"]["QTags"];
             };
             header?: never;
             path: {
