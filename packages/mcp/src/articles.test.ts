@@ -174,12 +174,14 @@ describe("listArticles", () => {
     expect(paged).toEqual(ids);
   });
 
-  it("filters by status", async () => {
+  it("hides archived articles unless asked for them", async () => {
     const { b } = await seedThree();
     await archiveArticle(db, b.id);
 
-    expect(listArticles(db, { status: "archived" }).articles.map((x) => x.title)).toEqual(["B"]);
+    expect(listArticles(db).total).toBe(2);
     expect(listArticles(db, { status: "active" }).total).toBe(2);
+    expect(listArticles(db, { status: "archived" }).articles.map((x) => x.title)).toEqual(["B"]);
+    expect(listArticles(db, { status: "all" }).total).toBe(3);
   });
 
   it("requires every requested tag to be present", async () => {

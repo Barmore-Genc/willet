@@ -40,6 +40,10 @@ export type Verbosity = z.infer<typeof VerbositySchema>;
 export const ArticleStatusSchema = z.enum(["active", "archived"]);
 export type ArticleStatus = z.infer<typeof ArticleStatusSchema>;
 
+/** Listing accepts either status plus "all"; archived articles are hidden by default. */
+export const ArticleStatusFilterSchema = z.enum(["active", "archived", "all"]);
+export type ArticleStatusFilter = z.infer<typeof ArticleStatusFilterSchema>;
+
 export const ArticleSortFieldSchema = z.enum(["created_at", "updated_at", "title"]);
 export type ArticleSortField = z.infer<typeof ArticleSortFieldSchema>;
 
@@ -280,7 +284,9 @@ export const UnarchiveArticleInputSchema = z.object({
 });
 
 export const ListArticlesInputSchema = z.object({
-  status: ArticleStatusSchema.optional(),
+  status: ArticleStatusFilterSchema.optional().describe(
+    "Defaults to active. Pass 'archived' or 'all' to see retired articles."
+  ),
   tags: z
     .array(z.string())
     .optional()

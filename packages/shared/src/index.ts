@@ -68,11 +68,13 @@ export {
   GroupBySchema,
   VerbositySchema,
   ArticleStatusSchema,
+  ArticleStatusFilterSchema,
   ArticleSortFieldSchema,
 } from "./models/types.js";
 export type {
   Article,
   ArticleStatus,
+  ArticleStatusFilter,
   ArticleSortField,
   Project,
   Ticket,

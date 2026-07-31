@@ -36,7 +36,7 @@ function summarize({ content, ...rest }: Article): Omit<Article, "content"> {
 export function registerArticleTools(server: McpServer): void {
   server.tool(
     "create_article",
-    "Create a knowledge base article: durable project knowledge such as rationale, decision records, research findings, or plans too loose to be tickets. Articles are living documents — edit them in place rather than appending.",
+    "Create a knowledge base article: durable project knowledge such as rationale, decision records, or research findings that outlive the ticket that prompted them.",
     withProjectId(CreateArticleInputSchema).shape,
     async ({ project_id, ...input }) => {
       const db = resolveDb(project_id);
@@ -58,7 +58,7 @@ export function registerArticleTools(server: McpServer): void {
 
   server.tool(
     "update_article",
-    "Edit an article in place. Pass the full new content — updates replace, they do not append.",
+    "Edit an article in place. Pass the full new content; updates replace, they do not append.",
     withProjectId(UpdateArticleInputSchema).shape,
     async ({ project_id, ...input }) => {
       const db = resolveDb(project_id);
@@ -68,7 +68,7 @@ export function registerArticleTools(server: McpServer): void {
 
   server.tool(
     "archive_article",
-    "Archive an article so it stops surfacing as current knowledge. Reversible via unarchive_article; nothing is deleted.",
+    "Archive an article so list_articles stops returning it by default. Reversible via unarchive_article; nothing is deleted.",
     withProjectId(ArchiveArticleInputSchema).shape,
     async ({ project_id, article_id }) => {
       const db = resolveDb(project_id);
@@ -88,7 +88,7 @@ export function registerArticleTools(server: McpServer): void {
 
   server.tool(
     "list_articles",
-    "List knowledge base articles, newest edits first. Bodies are omitted unless include_content is set — fetch one with get_article.",
+    "List knowledge base articles, newest edits first. Archived articles are excluded unless status says otherwise, and bodies are omitted unless include_content is set. Read one with get_article.",
     withProjectId(ListArticlesInputSchema).shape,
     async ({ project_id, include_content, ...opts }) => {
       const db = resolveDb(project_id);

@@ -18,6 +18,7 @@ import type {
   Article,
   ArticleSortField,
   ArticleStatus,
+  ArticleStatusFilter,
   Project,
   Ticket,
   TicketHistory,
@@ -974,7 +975,8 @@ export async function unarchiveArticle(
 }
 
 export interface ListArticlesOptions {
-  status?: ArticleStatus;
+  /** Defaults to "active": archived articles are retired and stay out of the way. */
+  status?: ArticleStatusFilter;
   /** Articles must carry every tag listed here. */
   tags?: string[];
   sort?: ArticleSortField;
@@ -992,9 +994,10 @@ export function listArticles(
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  if (opts.status) {
+  const status = opts.status ?? "active";
+  if (status !== "all") {
     conditions.push("status = ?");
-    params.push(opts.status);
+    params.push(status);
   }
   for (const tag of opts.tags ?? []) {
     conditions.push("EXISTS (SELECT 1 FROM json_each(articles.tags) WHERE value = ?)");

@@ -30,12 +30,12 @@ Use \`search_tickets\` with the \`mode\` parameter to pick a strategy.
 
 ## Knowledge Base Articles
 
-Tickets track work. Articles hold the knowledge around it: why a decision went the way it did, how a subsystem fits together, research that outlived the ticket that prompted it, or plans too loose to schedule yet.
+Tickets track work. Articles hold the knowledge around it: why a decision went the way it did, or research that outlived the ticket that prompted it.
 
 - **Write one**: \`create_article\` with a title and content. Tags work the same as on tickets.
-- **Edit in place**: \`update_article\` replaces the fields you pass. Articles are living documents — rewrite the stale paragraph instead of appending a correction.
-- **Retire one**: \`archive_article\` takes an article out of circulation without deleting it; \`unarchive_article\` brings it back.
-- **Browse**: \`list_articles\` filters by status and tags and returns titles only, so fetch the body you want with \`get_article\`.
+- **Edit in place**: \`update_article\` replaces the fields you pass, so rewrite the stale paragraph instead of appending a correction.
+- **Retire one**: \`archive_article\` drops an article from the default listing without deleting it; it still comes back under \`status: "archived"\`, and \`unarchive_article\` restores it.
+- **Browse**: \`list_articles\` filters by status and tags. It omits article bodies unless you pass \`include_content\`, so read one with \`get_article\`.
 
 Keep an article short enough to read in one pass. When one grows past that, split it.
 
