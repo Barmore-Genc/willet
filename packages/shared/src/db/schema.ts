@@ -2,6 +2,111 @@ import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import { getEmbeddingDim } from "../embeddings/local.js";
 
+/**
+ * Create an external-content FTS5 table over `table` plus the three triggers
+ * that keep it in sync, unless it already exists. Virtual tables don't support
+ * IF NOT EXISTS, hence the explicit check.
+ */
+function ensureFtsTable(
+  db: Database.Database,
+  opts: { table: string; fts: string; columns: [string, string] }
+): void {
+  const exists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+    .get(opts.fts);
+  if (exists) return;
+
+  const { table, fts } = opts;
+  const [a, b] = opts.columns;
+
+  db.exec(`
+    CREATE VIRTUAL TABLE ${fts} USING fts5(
+      ${a},
+      ${b},
+      content=${table},
+      content_rowid=rowid
+    );
+
+    CREATE TRIGGER ${table}_ai AFTER INSERT ON ${table} BEGIN
+      INSERT INTO ${fts}(rowid, ${a}, ${b})
+      VALUES (new.rowid, new.${a}, new.${b});
+    END;
+
+    CREATE TRIGGER ${table}_ad AFTER DELETE ON ${table} BEGIN
+      INSERT INTO ${fts}(${fts}, rowid, ${a}, ${b})
+      VALUES ('delete', old.rowid, old.${a}, old.${b});
+    END;
+
+    CREATE TRIGGER ${table}_au AFTER UPDATE ON ${table} BEGIN
+      INSERT INTO ${fts}(${fts}, rowid, ${a}, ${b})
+      VALUES ('delete', old.rowid, old.${a}, old.${b});
+      INSERT INTO ${fts}(rowid, ${a}, ${b})
+      VALUES (new.rowid, new.${a}, new.${b});
+    END;
+
+    INSERT INTO ${fts}(${fts}) VALUES('rebuild');
+  `);
+}
+
+/**
+ * Create a sqlite-vec table for `table`, its delete-cleanup trigger, and
+ * backfill it from the already-persisted embeddings, unless it already exists.
+ */
+function ensureVecTable(
+  db: Database.Database,
+  opts: { table: string; vec: string; embeddings: string; idColumn: string }
+): void {
+  const { table, vec, embeddings, idColumn } = opts;
+
+  const vecRow = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?")
+    .get(vec) as { sql: string } | undefined;
+
+  if (!vecRow) {
+    db.exec(
+      `CREATE VIRTUAL TABLE ${vec} USING vec0(embedding float[${getEmbeddingDim()}] distance_metric=cosine)`
+    );
+
+    db.exec(`
+      CREATE TRIGGER ${vec}_cleanup BEFORE DELETE ON ${table} BEGIN
+        DELETE FROM ${vec} WHERE rowid = old.rowid;
+      END;
+    `);
+
+    const rows = db
+      .prepare(
+        `SELECT t.rowid, e.embedding FROM ${embeddings} e JOIN ${table} t ON t.id = e.${idColumn}`
+      )
+      .all() as Array<{ rowid: number; embedding: Buffer }>;
+
+    if (rows.length > 0) {
+      const insert = db.prepare(`INSERT INTO ${vec}(rowid, embedding) VALUES (?, ?)`);
+      db.transaction(() => {
+        for (const row of rows) {
+          insert.run(BigInt(row.rowid), row.embedding);
+        }
+      })();
+    }
+    return;
+  }
+
+  // The table is created once at the then-active dimension and never
+  // auto-migrated (that's the embedder's/operator's job — e.g. a re-embed
+  // import). If the active model's dimension no longer matches, vector search
+  // will error or silently misbehave, so surface a loud warning rather than
+  // failing opaquely later.
+  const existingDim = vecRow.sql.match(/float\[(\d+)\]/)?.[1];
+  const activeDim = getEmbeddingDim();
+  if (existingDim !== undefined && Number(existingDim) !== activeDim) {
+    console.error(
+      `Warning: ${vec} was created with dimension ${existingDim} but the ` +
+        `active embedding model produces ${activeDim}. Vector search will fail ` +
+        `until the table is rebuilt (re-embed/re-import). The schema is not ` +
+        `auto-migrated.`
+    );
+  }
+}
+
 export function applySchema(db: Database.Database): void {
   sqliteVec.load(db);
   db.pragma("journal_mode = WAL");
@@ -138,96 +243,60 @@ export function applySchema(db: Database.Database): void {
   }
   db.exec("CREATE INDEX IF NOT EXISTS idx_tickets_due_date ON tickets(due_date)");
 
-  // FTS5 virtual table — can't use IF NOT EXISTS, so check first
-  const ftsExists = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='tickets_fts'"
-    )
-    .get();
+  ensureFtsTable(db, {
+    table: "tickets",
+    fts: "tickets_fts",
+    columns: ["title", "description"],
+  });
 
-  if (!ftsExists) {
-    db.exec(`
-      CREATE VIRTUAL TABLE tickets_fts USING fts5(
-        title,
-        description,
-        content=tickets,
-        content_rowid=rowid
-      );
+  ensureVecTable(db, {
+    table: "tickets",
+    vec: "ticket_vec",
+    embeddings: "ticket_embeddings",
+    idColumn: "ticket_id",
+  });
 
-      CREATE TRIGGER tickets_ai AFTER INSERT ON tickets BEGIN
-        INSERT INTO tickets_fts(rowid, title, description)
-        VALUES (new.rowid, new.title, new.description);
-      END;
+  // --- Articles (knowledge base) ---
+  //
+  // Deliberately narrower than tickets: no workflow status, no priority, no
+  // assignee, no due date, no comments, no history. `status` is only a
+  // reversible kill switch so search can hide retired docs.
 
-      CREATE TRIGGER tickets_ad AFTER DELETE ON tickets BEGIN
-        INSERT INTO tickets_fts(tickets_fts, rowid, title, description)
-        VALUES ('delete', old.rowid, old.title, old.description);
-      END;
-
-      CREATE TRIGGER tickets_au AFTER UPDATE ON tickets BEGIN
-        INSERT INTO tickets_fts(tickets_fts, rowid, title, description)
-        VALUES ('delete', old.rowid, old.title, old.description);
-        INSERT INTO tickets_fts(rowid, title, description)
-        VALUES (new.rowid, new.title, new.description);
-      END;
-
-      INSERT INTO tickets_fts(tickets_fts) VALUES('rebuild');
-    `);
-  }
-
-  // --- Vector search (sqlite-vec) ---
-
-  const vecRow = db
-    .prepare(
-      "SELECT sql FROM sqlite_master WHERE type='table' AND name='ticket_vec'"
-    )
-    .get() as { sql: string } | undefined;
-
-  if (!vecRow) {
-    db.exec(
-      `CREATE VIRTUAL TABLE ticket_vec USING vec0(embedding float[${getEmbeddingDim()}] distance_metric=cosine)`
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS articles (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      tags TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      metadata TEXT NOT NULL DEFAULT '{}'
     );
 
-    db.exec(`
-      CREATE TRIGGER ticket_vec_cleanup BEFORE DELETE ON tickets BEGIN
-        DELETE FROM ticket_vec WHERE rowid = old.rowid;
-      END;
-    `);
+    CREATE TABLE IF NOT EXISTS article_embeddings (
+      article_id TEXT PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
+      embedding BLOB NOT NULL,
+      content_hash TEXT NOT NULL
+    );
 
-    // Backfill from existing embeddings
-    const rows = db
-      .prepare(
-        "SELECT t.rowid, te.embedding FROM ticket_embeddings te JOIN tickets t ON t.id = te.ticket_id"
-      )
-      .all() as Array<{ rowid: number; embedding: Buffer }>;
+    CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(status);
+    CREATE INDEX IF NOT EXISTS idx_articles_created ON articles(created_at);
+    CREATE INDEX IF NOT EXISTS idx_articles_updated ON articles(updated_at);
+  `);
 
-    if (rows.length > 0) {
-      const insert = db.prepare(
-        "INSERT INTO ticket_vec(rowid, embedding) VALUES (?, ?)"
-      );
-      db.transaction(() => {
-        for (const row of rows) {
-          insert.run(BigInt(row.rowid), row.embedding);
-        }
-      })();
-    }
-  } else {
-    // The table is created once at the then-active dimension and never
-    // auto-migrated (that's the embedder's/operator's job — e.g. a re-embed
-    // import). If the active model's dimension no longer matches, vector search
-    // will error or silently misbehave, so surface a loud warning rather than
-    // failing opaquely later.
-    const existingDim = vecRow.sql.match(/float\[(\d+)\]/)?.[1];
-    const activeDim = getEmbeddingDim();
-    if (existingDim !== undefined && Number(existingDim) !== activeDim) {
-      console.error(
-        `Warning: ticket_vec was created with dimension ${existingDim} but the ` +
-          `active embedding model produces ${activeDim}. Vector search will fail ` +
-          `until the table is rebuilt (re-embed/re-import). The schema is not ` +
-          `auto-migrated.`
-      );
-    }
-  }
+  ensureFtsTable(db, {
+    table: "articles",
+    fts: "articles_fts",
+    columns: ["title", "content"],
+  });
+
+  ensureVecTable(db, {
+    table: "articles",
+    vec: "article_vec",
+    embeddings: "article_embeddings",
+    idColumn: "article_id",
+  });
 }
 
 export function applyRegistrySchema(db: Database.Database): void {
