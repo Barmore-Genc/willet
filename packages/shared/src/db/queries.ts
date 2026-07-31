@@ -11,6 +11,7 @@ import {
   type EmbeddingTransform,
 } from "../embeddings/local.js";
 import { applySchema, applyRegistrySchema } from "./schema.js";
+import { hybridSearch } from "./search.js";
 import { compileFilter } from "../query/compile.js";
 import type { FilterExpr } from "../query/ast.js";
 import type {
@@ -705,25 +706,6 @@ export function listTickets(
 
 // --- Search ---
 
-// Build an FTS5 MATCH expression from a free-text query.
-// Each whitespace-separated term is wrapped in a double-quoted string so FTS5
-// treats it as a literal, not as query syntax. Without this, a term containing
-// special syntax (a column filter like `in:progress`, a prefix `*`, a bare
-// keyword like `OR`/`NEAR`, or an unbalanced `"`) makes FTS5 raise a syntax or
-// "no such column" error and the whole search fails. Internal double quotes are
-// escaped by doubling, per FTS5 string-literal rules.
-//
-// Text mode joins terms with FTS5's implicit AND (every term must appear);
-// hybrid mode ORs them, since recall matters more there — RRF re-ranks against
-// the vector hits anyway.
-function buildMatchExpr(query: string, join: "AND" | "OR"): string {
-  return query
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((term) => `"${term.replace(/"/g, '""')}"`)
-    .join(join === "OR" ? " OR " : " ");
-}
-
 export interface SearchTicketsOptions {
   mode?: SearchMode;
   /** Boolean filter predicate (filter-language string or AST) to narrow results. */
@@ -739,117 +721,23 @@ export async function searchTickets(
   opts: SearchTicketsOptions = {},
   transform?: EmbeddingTransform
 ): Promise<Array<Ticket & { score: number }>> {
-  const mode = opts.mode ?? "hybrid";
-  const limit = opts.limit ?? 20;
-
-  // Restrict a set of candidate ids to those a ticket-table predicate accepts.
-  // Used by the semantic/hybrid paths, which rank first then filter.
-  const idFilter = compileFilter(opts.filter ?? "", { mode: opts.queryMode, table: "tickets" });
-  function passesFilter(ids: string[]): Set<string> {
-    if (!idFilter.where || ids.length === 0) return new Set(ids);
-    const placeholders = ids.map(() => "?").join(", ");
-    const rows = db
-      .prepare(`SELECT id FROM tickets WHERE id IN (${placeholders}) AND (${idFilter.where})`)
-      .all(...ids, ...idFilter.params) as Array<{ id: string }>;
-    return new Set(rows.map((r) => r.id));
-  }
-
-  if (mode === "text") {
-    const matchExpr = buildMatchExpr(query, "AND");
-    if (!matchExpr) return [];
-
-    // FTS join aliases the tickets table as `t`; compile against that alias.
-    const { where, params } = compileFilter(opts.filter ?? "", {
-      mode: opts.queryMode,
-      table: "t",
-    });
-    const filterClause = where ? ` AND (${where})` : "";
-    const rows = db
-      .prepare(
-        `SELECT t.*, fts.rank as score
-         FROM tickets_fts fts
-         JOIN tickets t ON t.rowid = fts.rowid
-         WHERE tickets_fts MATCH ?${filterClause}
-         ORDER BY fts.rank
-         LIMIT ?`
-      )
-      .all(matchExpr, ...params, limit) as (TicketRow & { score: number })[];
-
-    return rows.map((r) => ({ ...rowToTicket(r), score: r.score }));
-  }
-
-  // --- KNN helper (uses sqlite-vec indexed search) ---
-
-  async function knnSearch(
-    kLimit: number
-  ): Promise<Array<{ id: string; distance: number }>> {
-    const queryEmbedding = await embed(query, transform);
-    const queryBuf = embeddingToBuffer(queryEmbedding);
-    return db
-      .prepare(
-        `SELECT t.id, knn.distance
-         FROM (SELECT rowid, distance FROM ticket_vec WHERE embedding MATCH ? AND k = ?) knn
-         JOIN tickets t ON t.rowid = knn.rowid`
-      )
-      .all(queryBuf, kLimit) as Array<{ id: string; distance: number }>;
-  }
-
-  if (mode === "semantic") {
-    const knnRows = await knnSearch(limit * 5);
-    const allowed = passesFilter(knnRows.map((r) => r.id));
-    const results: Array<Ticket & { score: number }> = [];
-    for (const row of knnRows) {
-      if (results.length >= limit) break;
-      if (!allowed.has(row.id)) continue;
-      const ticket = getTicketById(db, row.id);
-      if (!ticket) continue;
-      results.push({ ...ticket, score: 1 - row.distance });
-    }
-    return results;
-  }
-
-  // Hybrid: reciprocal rank fusion
-  const k = 60;
-
-  // FTS results
-  const matchExpr = buildMatchExpr(query, "OR");
-  const ftsRows = matchExpr
-    ? (db
-        .prepare(
-          `SELECT t.id
-       FROM tickets_fts fts
-       JOIN tickets t ON t.rowid = fts.rowid
-       WHERE tickets_fts MATCH ?
-       ORDER BY fts.rank
-       LIMIT ?`
-        )
-        .all(matchExpr, limit * 2) as Array<{ id: string }>)
-    : [];
-
-  // Semantic results (via sqlite-vec KNN)
-  const knnRows = await knnSearch(limit * 5);
-
-  // RRF fusion
-  const rrfScores = new Map<string, number>();
-  ftsRows.forEach((r, i) => {
-    rrfScores.set(r.id, (rrfScores.get(r.id) ?? 0) + 1 / (k + i + 1));
-  });
-  knnRows.forEach((r, i) => {
-    rrfScores.set(r.id, (rrfScores.get(r.id) ?? 0) + 1 / (k + i + 1));
-  });
-
-  const sorted = [...rrfScores.entries()].sort((a, b) => b[1] - a[1]);
-
-  const allowed = passesFilter(sorted.map(([id]) => id));
-  const results: Array<Ticket & { score: number }> = [];
-  for (const [id, score] of sorted) {
-    if (results.length >= limit) break;
-    if (!allowed.has(id)) continue;
-    const ticket = getTicketById(db, id);
-    if (!ticket) continue;
-    results.push({ ...ticket, score });
-  }
-  return results;
+  return hybridSearch<Ticket, TicketRow>(
+    db,
+    {
+      table: "tickets",
+      fts: "tickets_fts",
+      vec: "ticket_vec",
+      fromRow: rowToTicket,
+    },
+    query,
+    {
+      mode: opts.mode,
+      limit: opts.limit,
+      filter: (alias) =>
+        compileFilter(opts.filter ?? "", { mode: opts.queryMode, table: alias }),
+    },
+    transform
+  );
 }
 
 // --- Ticket graph (BFS) ---
