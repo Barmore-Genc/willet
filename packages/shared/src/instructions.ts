@@ -28,6 +28,17 @@ Willet supports three search modes:
 
 Use \`search_tickets\` with the \`mode\` parameter to pick a strategy.
 
+## Knowledge Base Articles
+
+Tickets track work. Articles hold the knowledge around it: why a decision went the way it did, or research that outlived the ticket that prompted it.
+
+- **Write one**: \`create_article\` with a title and content. Tags work the same as on tickets.
+- **Edit in place**: \`update_article\` replaces the fields you pass, so rewrite the stale paragraph instead of appending a correction.
+- **Retire one**: \`archive_article\` drops an article from the default listing without deleting it; it still comes back under \`status: "archived"\`, and \`unarchive_article\` restores it.
+- **Browse**: \`list_articles\` filters by status and tags. It omits article bodies unless you pass \`include_content\`, so read one with \`get_article\`.
+
+Keep an article short enough to read in one pass. When one grows past that, split it.
+
 ## Visualization
 
 - **render_ticket_board**: Kanban-style board grouped by status.
@@ -158,6 +169,7 @@ export function buildInstructions(mode: "local" | "selfhosted"): string {
     "ticket CRUD (create_ticket, update_ticket, get_ticket, delete_ticket, start_ticket, complete_ticket, cancel_ticket, reopen_ticket)",
     "comments and links (add_comment, link_tickets, unlink_tickets)",
     "querying (list_tickets, search_tickets, get_ticket_graph, list_tags)",
+    "knowledge base articles (create_article, get_article, update_article, archive_article, unarchive_article, list_articles)",
     "visualization (render_ticket_board, render_dependency_graph, get_project_stats)",
   ].join(", ");
 

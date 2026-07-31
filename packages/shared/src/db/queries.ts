@@ -15,6 +15,10 @@ import { hybridSearch } from "./search.js";
 import { compileFilter } from "../query/compile.js";
 import type { FilterExpr } from "../query/ast.js";
 import type {
+  Article,
+  ArticleSortField,
+  ArticleStatus,
+  ArticleStatusFilter,
   Project,
   Ticket,
   TicketHistory,
@@ -206,6 +210,26 @@ function rowToTicket(row: TicketRow): Ticket {
     status: row.status as Status,
     type: row.type as TicketType,
     priority: row.priority as Priority,
+    tags: JSON.parse(row.tags) as string[],
+    metadata: JSON.parse(row.metadata) as Record<string, unknown>,
+  };
+}
+
+interface ArticleRow {
+  id: string;
+  title: string;
+  content: string;
+  tags: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  metadata: string;
+}
+
+function rowToArticle(row: ArticleRow): Article {
+  return {
+    ...row,
+    status: row.status as ArticleStatus,
     tags: JSON.parse(row.tags) as string[],
     metadata: JSON.parse(row.metadata) as Record<string, unknown>,
   };
@@ -814,6 +838,193 @@ export function getProjectStats(
   }
 
   return { total, byStatus, byType, byPriority };
+}
+
+// --- Article CRUD ---
+//
+// Articles are living documents: edits land in place, there is no workflow, no
+// history, and no comments. `status` is only a reversible kill switch
+// (archive/unarchive) so search can hide retired docs.
+
+async function embedArticle(
+  db: Database.Database,
+  article: Article,
+  transform?: EmbeddingTransform
+): Promise<void> {
+  await embedArticleContent(
+    db,
+    article.id,
+    { title: article.title, content: article.content, tags: article.tags },
+    transform
+  );
+}
+
+export async function createArticle(
+  db: Database.Database,
+  input: {
+    title: string;
+    content: string;
+    tags?: string[];
+    metadata?: Record<string, unknown>;
+  },
+  transform?: EmbeddingTransform
+): Promise<Article> {
+  const now = new Date().toISOString();
+  const id = ulid();
+
+  db.prepare(
+    `INSERT INTO articles (id, title, content, tags, status, created_at, updated_at, metadata)
+     VALUES (?, ?, ?, ?, 'active', ?, ?, ?)`
+  ).run(
+    id,
+    input.title,
+    input.content,
+    JSON.stringify(input.tags ?? []),
+    now,
+    now,
+    JSON.stringify(input.metadata ?? {})
+  );
+
+  const article = getArticleById(db, id)!;
+  await embedArticle(db, article, transform);
+  return article;
+}
+
+export function getArticleById(db: Database.Database, articleId: string): Article | null {
+  const row = db
+    .prepare("SELECT * FROM articles WHERE id = ?")
+    .get(articleId) as ArticleRow | undefined;
+  return row ? rowToArticle(row) : null;
+}
+
+export async function updateArticle(
+  db: Database.Database,
+  input: {
+    article_id: string;
+    title?: string;
+    content?: string;
+    tags?: string[];
+    status?: ArticleStatus;
+    metadata?: Record<string, unknown>;
+  },
+  transform?: EmbeddingTransform
+): Promise<Article> {
+  const current = getArticleById(db, input.article_id);
+  if (!current) throw new Error(`Article not found: ${input.article_id}`);
+
+  const updates: string[] = [];
+  const params: unknown[] = [];
+  let needsReembed = false;
+
+  const setField = (
+    field: string,
+    newValue: unknown,
+    currentValue: unknown,
+    serialize?: (v: unknown) => string
+  ) => {
+    if (newValue === undefined) return;
+    const newStr = serialize ? serialize(newValue) : String(newValue ?? "");
+    const oldStr = serialize ? serialize(currentValue) : String(currentValue ?? "");
+    if (newStr === oldStr) return;
+
+    updates.push(`${field} = ?`);
+    params.push(serialize ? newStr : newValue);
+
+    if (field === "title" || field === "content" || field === "tags") {
+      needsReembed = true;
+    }
+  };
+
+  setField("title", input.title, current.title);
+  setField("content", input.content, current.content);
+  setField("status", input.status, current.status);
+  setField("tags", input.tags, current.tags, (v) => JSON.stringify(v));
+  setField("metadata", input.metadata, current.metadata, (v) => JSON.stringify(v));
+
+  if (updates.length > 0) {
+    updates.push("updated_at = ?");
+    params.push(new Date().toISOString());
+    params.push(input.article_id);
+
+    db.prepare(`UPDATE articles SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+  }
+
+  const updated = getArticleById(db, input.article_id)!;
+  if (needsReembed) await embedArticle(db, updated, transform);
+  return updated;
+}
+
+export async function archiveArticle(
+  db: Database.Database,
+  articleId: string
+): Promise<Article> {
+  const article = getArticleById(db, articleId);
+  if (!article) throw new Error(`Article not found: ${articleId}`);
+  if (article.status === "archived") throw new Error("Article is already archived");
+  return updateArticle(db, { article_id: articleId, status: "archived" });
+}
+
+export async function unarchiveArticle(
+  db: Database.Database,
+  articleId: string
+): Promise<Article> {
+  const article = getArticleById(db, articleId);
+  if (!article) throw new Error(`Article not found: ${articleId}`);
+  if (article.status === "active") throw new Error("Article is not archived");
+  return updateArticle(db, { article_id: articleId, status: "active" });
+}
+
+export interface ListArticlesOptions {
+  /** Defaults to "active": archived articles are retired and stay out of the way. */
+  status?: ArticleStatusFilter;
+  /** Articles must carry every tag listed here. */
+  tags?: string[];
+  sort?: ArticleSortField;
+  sort_direction?: SortDirection;
+  limit?: number;
+  offset?: number;
+}
+
+const ARTICLE_SORT_FIELDS = new Set(["created_at", "updated_at", "title"]);
+
+export function listArticles(
+  db: Database.Database,
+  opts: ListArticlesOptions = {}
+): { articles: Article[]; total: number } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  const status = opts.status ?? "active";
+  if (status !== "all") {
+    conditions.push("status = ?");
+    params.push(status);
+  }
+  for (const tag of opts.tags ?? []) {
+    conditions.push("EXISTS (SELECT 1 FROM json_each(articles.tags) WHERE value = ?)");
+    params.push(tag);
+  }
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const sort = opts.sort ?? "updated_at";
+  if (!ARTICLE_SORT_FIELDS.has(sort)) throw new Error(`Invalid sort field: ${sort}`);
+  const dir = opts.sort_direction === "asc" ? "ASC" : "DESC";
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
+
+  const countRow = db
+    .prepare(`SELECT COUNT(*) as total FROM articles ${whereClause}`)
+    .get(...params) as { total: number };
+
+  // Timestamps are millisecond-resolution, so a batch of articles written in
+  // the same tick would otherwise page in an unspecified order and rows could
+  // repeat or vanish across pages. The id tie-break makes paging total.
+  const rows = db
+    .prepare(
+      `SELECT * FROM articles ${whereClause} ORDER BY ${sort} ${dir}, id ${dir} LIMIT ? OFFSET ?`
+    )
+    .all(...params, limit, offset) as ArticleRow[];
+
+  return { articles: rows.map(rowToArticle), total: countRow.total };
 }
 
 // --- Tags ---
