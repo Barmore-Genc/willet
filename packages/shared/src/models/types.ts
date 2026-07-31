@@ -37,6 +37,12 @@ export type GroupBy = z.infer<typeof GroupBySchema>;
 export const VerbositySchema = z.enum(["short", "detailed", "full"]);
 export type Verbosity = z.infer<typeof VerbositySchema>;
 
+export const ArticleStatusSchema = z.enum(["active", "archived"]);
+export type ArticleStatus = z.infer<typeof ArticleStatusSchema>;
+
+export const ArticleSortFieldSchema = z.enum(["created_at", "updated_at", "title"]);
+export type ArticleSortField = z.infer<typeof ArticleSortFieldSchema>;
+
 // --- Entity types ---
 
 export interface Project {
@@ -89,6 +95,17 @@ export interface TicketComment {
   content: string;
   created_at: string;
   created_by: string;
+}
+
+export interface Article {
+  id: string;
+  title: string;
+  content: string;
+  tags: string[];
+  status: ArticleStatus;
+  created_at: string;
+  updated_at: string;
+  metadata: Record<string, unknown>;
 }
 
 // --- Tool input schemas ---
@@ -232,6 +249,51 @@ export const RenderTicketBoardInputSchema = z.object({
 export const GetProjectStatsInputSchema = z.object({});
 
 export const ListTagsInputSchema = z.object({});
+
+// --- Article tool input schemas ---
+
+export const CreateArticleInputSchema = z.object({
+  title: z.string().min(1),
+  content: z.string().min(1),
+  tags: z.array(z.string()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const UpdateArticleInputSchema = z.object({
+  article_id: z.string(),
+  title: z.string().min(1).optional(),
+  content: z.string().min(1).optional(),
+  tags: z.array(z.string()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const GetArticleInputSchema = z.object({
+  article_id: z.string(),
+});
+
+export const ArchiveArticleInputSchema = z.object({
+  article_id: z.string(),
+});
+
+export const UnarchiveArticleInputSchema = z.object({
+  article_id: z.string(),
+});
+
+export const ListArticlesInputSchema = z.object({
+  status: ArticleStatusSchema.optional(),
+  tags: z
+    .array(z.string())
+    .optional()
+    .describe("Only return articles carrying every one of these tags."),
+  sort: ArticleSortFieldSchema.optional(),
+  sort_direction: SortDirectionSchema.optional(),
+  limit: z.number().int().positive().optional(),
+  offset: z.number().int().nonnegative().optional(),
+  include_content: z
+    .boolean()
+    .optional()
+    .describe("Include each article's full body. Off by default to keep listings small."),
+});
 
 export const RenderDependencyGraphInputSchema = z.object({
   ticket_id: z.string(),
