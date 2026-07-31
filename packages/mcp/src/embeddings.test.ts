@@ -8,7 +8,10 @@ import {
   EMBEDDING_DIM,
 } from "@willet/shared";
 import { applySchema } from "@willet/shared/dist/db/schema.js";
-import { embedTicketContent } from "@willet/shared/dist/db/queries.js";
+import {
+  embedTicketContent,
+  embedArticleContent,
+} from "@willet/shared/dist/db/queries.js";
 
 // Capture the text each embed call actually receives so we can assert the
 // caller-supplied transform is applied. A custom embedder also means these
@@ -85,6 +88,94 @@ describe("embedTicketContent change-detection", () => {
     expect(calls.length).toBe(2);
     expect(calls[1].startsWith("query: ")).toBe(true);
 
+    db.close();
+  });
+});
+
+describe("embedArticleContent", () => {
+  let calls: string[];
+
+  beforeEach(() => {
+    calls = [];
+    setEmbedder(async (text: string) => {
+      calls.push(text);
+      return new Float32Array(8).fill(0.1);
+    }, 8);
+  });
+
+  function dbWithArticle(id: string) {
+    const db = new Database(":memory:");
+    applySchema(db);
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO articles (id, title, content, tags, created_at, updated_at)
+       VALUES (?, 'Auth rationale', 'why we chose OAuth', '["auth"]', ?, ?)`
+    ).run(id, now, now);
+    return db;
+  }
+
+  const fields = { title: "Auth rationale", content: "why we chose OAuth", tags: ["auth"] };
+
+  it("embeds title, content, and tags", async () => {
+    const id = ulid();
+    const db = dbWithArticle(id);
+
+    await embedArticleContent(db, id, fields);
+
+    expect(calls).toEqual(["Auth rationale\nwhy we chose OAuth\nauth"]);
+    db.close();
+  });
+
+  it("writes to article_embeddings and article_vec, leaving the ticket tables empty", async () => {
+    const id = ulid();
+    const db = dbWithArticle(id);
+
+    await embedArticleContent(db, id, fields);
+
+    const stored = db
+      .prepare("SELECT article_id, content_hash FROM article_embeddings")
+      .all() as Array<{ article_id: string; content_hash: string }>;
+    expect(stored).toHaveLength(1);
+    expect(stored[0].article_id).toBe(id);
+    expect(stored[0].content_hash).toMatch(/^[0-9a-f]{64}$/);
+
+    expect(
+      (db.prepare("SELECT COUNT(*) as n FROM article_vec").get() as { n: number }).n
+    ).toBe(1);
+    expect(
+      (db.prepare("SELECT COUNT(*) as n FROM ticket_embeddings").get() as { n: number }).n
+    ).toBe(0);
+
+    db.close();
+  });
+
+  it("skips re-embedding identical content and re-embeds on change", async () => {
+    const id = ulid();
+    const db = dbWithArticle(id);
+
+    await embedArticleContent(db, id, fields);
+    await embedArticleContent(db, id, fields);
+    expect(calls.length).toBe(1);
+
+    await embedArticleContent(db, id, { ...fields, content: "we switched to sessions" });
+    expect(calls.length).toBe(2);
+
+    // Still one row per article — the re-embed replaces rather than appends.
+    expect(
+      (db.prepare("SELECT COUNT(*) as n FROM article_vec").get() as { n: number }).n
+    ).toBe(1);
+
+    db.close();
+  });
+
+  it("re-embeds when only the tags change", async () => {
+    const id = ulid();
+    const db = dbWithArticle(id);
+
+    await embedArticleContent(db, id, fields);
+    await embedArticleContent(db, id, { ...fields, tags: ["auth", "adr"] });
+
+    expect(calls.length).toBe(2);
     db.close();
   });
 });
