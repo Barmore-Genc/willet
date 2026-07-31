@@ -26,8 +26,8 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.0.0",
-    "@modelcontextprotocol/ext-apps": "^1.4.0",
+    "@huggingface/transformers": "^4.2.0",
+    "@modelcontextprotocol/ext-apps": "^1.7.5",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "archiver": "^7.0.0",
     "better-sqlite3": "^12.8.0",
@@ -35,12 +35,12 @@
     "d3-force": "^3.0.0",
     "d3-selection": "^3.0.0",
     "d3-zoom": "^3.0.0",
-    "node-stream-zip": "^1.15.0",
-    "onnxruntime-node": "^1.24.3",
+    "node-stream-zip": "^1.16.0",
+    "onnxruntime-node": "^1.27.0",
     "sqlite-vec": "^0.1.9",
     "typescript-parsec": "^0.3.4",
     "ulid": "^3.0.2",
-    "zod": "^4.3.6"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/archiver": "^6.0.0",
@@ -49,10 +49,10 @@
     "@types/d3-force": "^3.0.10",
     "@types/d3-selection": "^3.0.11",
     "@types/d3-zoom": "^3.0.8",
-    "@types/node": "^25.5.0",
+    "@types/node": "^26.1.1",
     "cross-env": "^10.1.0",
     "typescript": "^6.0.2",
-    "vite": "^8.0.3",
-    "vite-plugin-singlefile": "^2.3.2"
+    "vite": "^8.1.5",
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }
