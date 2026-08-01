@@ -590,7 +590,8 @@ describe("Willet MCP stdio E2E", () => {
     expect(listedTitles).toContain("Fix database migration");
     expect(listed.total).toBe(listed.tickets.length);
 
-    // With a query, it searches and returns the same shape
+    // With a query, it searches — same `tickets` key, but no `total`, since
+    // relevance search cannot count matches beyond `limit`
     const searchResult = await client.callTool({
       name: "find_tickets",
       arguments: { project_id: projectId, query: "authentication" },
@@ -598,7 +599,7 @@ describe("Willet MCP stdio E2E", () => {
     const found = JSON.parse(
       (searchResult.content as Array<{ text: string }>)[0].text
     );
-    expect(found.total).toBe(found.tickets.length);
+    expect(found).not.toHaveProperty("total");
     expect(found.tickets.length).toBeGreaterThan(0);
     expect(
       found.tickets.some((t: { title: string }) =>
@@ -1079,7 +1080,7 @@ describe("Willet MCP stdio E2E", () => {
           },
         });
         const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
-        expect(data.total).toBe(data.tickets.length);
+        expect(data).not.toHaveProperty("total");
         expect(data.tickets.length).toBeGreaterThan(0);
         for (const t of data.tickets) {
           expect(t).toHaveProperty("score");

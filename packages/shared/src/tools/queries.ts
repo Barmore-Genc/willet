@@ -59,23 +59,21 @@ export function registerQueryTools(server: McpServer, options: ToolOptions): voi
 
   server.tool(
     "find_tickets",
-    "Find tickets. With `query`, searches by relevance using text (FTS5), semantic (vector similarity), or hybrid mode; without it, lists tickets in sort order. Either way `filter` narrows the results (see the filter parameter for the language). `verbosity` controls output: 'short' (id/title/status/type/priority/estimate/assignee/tags/due_date), 'detailed' (all fields, description truncated, default), or 'full' (all fields, no truncation).",
+    "Find tickets. With `query`, searches by relevance using text (FTS5), semantic (vector similarity), or hybrid mode; without it, lists tickets in sort order. Either way `filter` narrows the results (see the filter parameter for the language). Returns `tickets`, plus `total` — the full number of matches ignoring `limit` — when listing. Searching omits `total`, so never read the result count as the number of matching tickets. `verbosity` controls output: 'short' (id/title/status/type/priority/estimate/assignee/tags/due_date), 'detailed' (all fields, description truncated, default), or 'full' (all fields, no truncation).",
     withProjectId(FindTicketsInputSchema).shape,
     async ({ project_id, query, mode, filter, sort, sort_direction, limit, offset, verbosity }) => {
       const db = resolveDb(project_id);
       const v: Verbosity = verbosity ?? "detailed";
 
+      // Relevance search has no cheap way to count matches beyond `limit`, so it
+      // reports no `total` rather than passing off the page size as one.
       if (query) {
         const results = await searchTickets(db, query, { mode, filter, limit, queryMode });
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                { tickets: projectTickets(results, v, options), total: results.length },
-                null,
-                2
-              ),
+              text: JSON.stringify({ tickets: projectTickets(results, v, options) }, null, 2),
             },
           ],
         };

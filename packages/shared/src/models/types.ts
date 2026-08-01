@@ -202,7 +202,7 @@ export const FindTicketsInputSchema = z.object({
     .optional()
     .describe(
       "Free text to search for. Omit to list tickets instead. Searching ranks by relevance, so `sort`, " +
-        "`sort_direction`, and `offset` are ignored when this is set."
+        "`sort_direction`, and `offset` are ignored when this is set, and the result carries no `total`."
     ),
   mode: SearchModeSchema.optional().describe("Search strategy. Only applies alongside `query`. Defaults to hybrid."),
   filter: FilterSchema.optional(),
