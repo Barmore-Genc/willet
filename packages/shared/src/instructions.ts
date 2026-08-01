@@ -14,8 +14,8 @@ Willet organizes tickets into projects. Each project is tied to a working direct
 
 1. **Initialize**: \`init_project\` for a new codebase, or \`get_project\` to find an existing one.
 2. **Create tickets**: \`create_ticket\` with a title, optional description, priority, tags, and due date.
-3. **Track progress**: Move tickets through statuses with \`start_ticket\`, \`complete_ticket\`, \`cancel_ticket\`, or \`reopen_ticket\`. Or use \`update_ticket\` for finer control.
-4. **Organize**: Use \`link_tickets\` to create relationships (blocks, relates_to, duplicates) between tickets. Use \`parent_ticket_id\` when creating or updating tickets for parent/child hierarchies. Add tags for categorization.
+3. **Track progress**: Move tickets through statuses with \`set_ticket_status\`. Or use \`update_ticket\` for finer control.
+4. **Organize**: Use \`link_tickets\` to create relationships (blocks, relates_to, duplicates) between tickets. It takes a list, so pass every link at once. Use \`parent_ticket_id\` when creating or updating tickets for parent/child hierarchies. Add tags for categorization.
 5. **Comment**: Use \`add_comment\` to leave notes on tickets.
 
 ## Searching Tickets
@@ -26,7 +26,7 @@ Willet supports three search modes:
 - **Semantic search**: Vector similarity search using embeddings. Finds conceptually related tickets even when wording differs.
 - **Hybrid search**: Combines both text and semantic results for the best coverage.
 
-Use \`search_tickets\` with the \`mode\` parameter to pick a strategy.
+Use \`find_tickets\` with a \`query\`, and set \`mode\` to pick a strategy.
 
 ## Visualization
 
@@ -36,7 +36,7 @@ Use \`search_tickets\` with the \`mode\` parameter to pick a strategy.
 
 ## Tips
 
-- Use \`list_tickets\` with status, priority, or tag filters before resorting to search — it's faster when you know what you're looking for.
+- Use \`find_tickets\` with a \`filter\` and no \`query\` when you know what you're looking for — it's faster than searching.
 - Tags are freeform strings. Use them for categories, sprints, components, or whatever fits your workflow.
 - Link related tickets early. The dependency graph becomes more useful as you add more relationships.
 - \`get_ticket\` retrieves a single ticket with optional comments, history, and subticket details.
@@ -155,9 +155,9 @@ Learn more at https://willetcloud.com
 export function buildInstructions(mode: "local" | "selfhosted"): string {
   const tools = [
     "project management (init_project, get_project, list_projects)",
-    "ticket CRUD (create_ticket, update_ticket, get_ticket, delete_ticket, start_ticket, complete_ticket, cancel_ticket, reopen_ticket)",
-    "comments and links (add_comment, link_tickets, unlink_tickets)",
-    "querying (list_tickets, search_tickets, get_ticket_graph, list_tags)",
+    "ticket CRUD (create_ticket, update_ticket, get_ticket, delete_ticket, set_ticket_status)",
+    "comments and links (add_comment, link_tickets)",
+    "querying (find_tickets, get_ticket_graph, list_tags)",
     "visualization (render_ticket_board, render_dependency_graph, get_project_stats)",
   ].join(", ");
 

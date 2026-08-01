@@ -33,7 +33,7 @@ export interface paths {
         };
         /**
          * List tickets in a project
-         * @description Mirrors the list_tickets MCP tool. Items are verbosity-projected ticket objects.
+         * @description Mirrors the find_tickets MCP tool. Items are verbosity-projected ticket objects.
          */
         get: operations["listTickets"];
         put?: never;

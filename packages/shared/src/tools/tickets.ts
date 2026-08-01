@@ -5,10 +5,7 @@ import {
   UpdateTicketInputSchema,
   GetTicketInputSchema,
   DeleteTicketInputSchema,
-  StartTicketInputSchema,
-  CompleteTicketInputSchema,
-  CancelTicketInputSchema,
-  ReopenTicketInputSchema,
+  SetTicketStatusInputSchema,
   withProjectId,
   formatTicket,
   projectTicket,
@@ -24,10 +21,7 @@ import {
   updateTicket,
   getTicketById,
   deleteTicket,
-  startTicket,
-  completeTicket,
-  cancelTicket,
-  reopenTicket,
+  setTicketStatus,
   getComments,
   getHistory,
   getLinks,
@@ -129,51 +123,12 @@ export function registerTicketTools(server: McpServer, options: ToolOptions): vo
   );
 
   server.tool(
-    "start_ticket",
-    "Set a ticket's status to in_progress",
-    withProjectId(StartTicketInputSchema).shape,
-    async ({ project_id, ticket_id }) => {
+    "set_ticket_status",
+    "Move a ticket through its lifecycle. 'in_progress' starts work, 'done' completes it (pass `actual` to record time spent), 'cancelled' drops it, and 'open' reopens a ticket that is done, cancelled, or in progress.",
+    withProjectId(SetTicketStatusInputSchema).shape,
+    async ({ project_id, ticket_id, status, actual }) => {
       const db = resolveDb(project_id);
-      const ticket = await startTicket(db, ticket_id);
-      return {
-        content: [{ type: "text", text: JSON.stringify(formatTicket(ticket, options), null, 2) }],
-      };
-    }
-  );
-
-  server.tool(
-    "complete_ticket",
-    "Mark a ticket as done",
-    withProjectId(CompleteTicketInputSchema).shape,
-    async ({ project_id, ticket_id, actual }) => {
-      const db = resolveDb(project_id);
-      const ticket = await completeTicket(db, ticket_id, actual);
-      return {
-        content: [{ type: "text", text: JSON.stringify(formatTicket(ticket, options), null, 2) }],
-      };
-    }
-  );
-
-  server.tool(
-    "cancel_ticket",
-    "Cancel a ticket",
-    withProjectId(CancelTicketInputSchema).shape,
-    async ({ project_id, ticket_id }) => {
-      const db = resolveDb(project_id);
-      const ticket = await cancelTicket(db, ticket_id);
-      return {
-        content: [{ type: "text", text: JSON.stringify(formatTicket(ticket, options), null, 2) }],
-      };
-    }
-  );
-
-  server.tool(
-    "reopen_ticket",
-    "Move a ticket back to the open queue. Accepts tickets that are done, cancelled, or in_progress",
-    withProjectId(ReopenTicketInputSchema).shape,
-    async ({ project_id, ticket_id }) => {
-      const db = resolveDb(project_id);
-      const ticket = await reopenTicket(db, ticket_id);
+      const ticket = await setTicketStatus(db, ticket_id, status, actual);
       return {
         content: [{ type: "text", text: JSON.stringify(formatTicket(ticket, options), null, 2) }],
       };
