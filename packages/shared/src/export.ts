@@ -1,7 +1,7 @@
 import { createWriteStream, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import archiver from "archiver";
+import { ZipArchive } from "archiver";
 import StreamZip from "node-stream-zip";
 import { ulid } from "ulid";
 import type Database from "better-sqlite3";
@@ -307,7 +307,7 @@ export async function exportProject(
   const tickets = gatherTicketData(projectDb);
   const slug = slugify(projectName);
 
-  const archive = archiver("zip", { zlib: { level: 6 } });
+  const archive = new ZipArchive({ zlib: { level: 6 } });
   const output = createWriteStream(outputPath);
   archive.pipe(output);
 
