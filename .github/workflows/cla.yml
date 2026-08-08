@@ -27,7 +27,10 @@ jobs:
           path-to-document: "https://github.com/${{ github.repository }}/blob/main/CLA.md"
           path-to-signatures: "signatures/version1/cla.json"
           branch: "cla-signatures"
-          allowlist: "SeriousBug,dependabot[bot],renovate[bot]"
+          # "claude" is the account GitHub resolves noreply@anthropic.com to, so it
+          # is the commit author on agent-written commits. It is a plain user
+          # account, not a [bot] one, so a bot wildcard would not cover it.
+          allowlist: "SeriousBug,claude,dependabot[bot],renovate[bot]"
           remote-organization-name: ""
           remote-repository-name: ""
           lock-pullrequest-aftermerge: false
