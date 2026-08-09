@@ -560,6 +560,24 @@ export async function reopenTicket(db: Database.Database, ticketId: string): Pro
   return updateTicket(db, { ticket_id: ticketId, status: "open", completed_at: null });
 }
 
+export async function setTicketStatus(
+  db: Database.Database,
+  ticketId: string,
+  status: Status,
+  actual?: string
+): Promise<Ticket> {
+  switch (status) {
+    case "in_progress":
+      return startTicket(db, ticketId);
+    case "done":
+      return completeTicket(db, ticketId, actual);
+    case "cancelled":
+      return cancelTicket(db, ticketId);
+    case "open":
+      return reopenTicket(db, ticketId);
+  }
+}
+
 // --- Comments ---
 
 export async function addComment(
@@ -640,6 +658,36 @@ export function unlinkTickets(
   if (result.changes === 0) {
     throw new Error("Link not found");
   }
+}
+
+export interface TicketLinkPair {
+  source_ticket_id: string;
+  target_ticket_id: string;
+  link_type: LinkType;
+}
+
+/**
+ * Apply a batch of links atomically. A bad pair anywhere in the batch rolls the
+ * whole thing back, so an agent gets one clear error instead of a half-written
+ * graph it then has to reconcile.
+ */
+export function applyTicketLinks(
+  db: Database.Database,
+  links: TicketLinkPair[],
+  remove: boolean
+): TicketLink[] {
+  const run = db.transaction((pairs: TicketLinkPair[]) => {
+    const applied: TicketLink[] = [];
+    for (const { source_ticket_id, target_ticket_id, link_type } of pairs) {
+      if (remove) {
+        unlinkTickets(db, source_ticket_id, target_ticket_id, link_type);
+      } else {
+        applied.push(linkTickets(db, source_ticket_id, target_ticket_id, link_type));
+      }
+    }
+    return applied;
+  });
+  return run(links);
 }
 
 export function getLinks(db: Database.Database, ticketId: string): TicketLink[] {

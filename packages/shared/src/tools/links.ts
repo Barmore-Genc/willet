@@ -2,16 +2,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   AddCommentInputSchema,
   LinkTicketsInputSchema,
-  UnlinkTicketsInputSchema,
   withProjectId,
 } from "../models/types.js";
-import {
-  getProject,
-  getProjectDb,
-  addComment,
-  linkTickets,
-  unlinkTickets,
-} from "../db/queries.js";
+import { getProject, getProjectDb, addComment, applyTicketLinks } from "../db/queries.js";
 
 function resolveDb(projectId?: string) {
   const project = getProject(process.cwd(), projectId);
@@ -34,26 +27,21 @@ export function registerLinkTools(server: McpServer): void {
 
   server.tool(
     "link_tickets",
-    "Create a link between two tickets (blocks, relates_to, or duplicates)",
+    "Create or remove links between tickets (blocks, relates_to, or duplicates). Takes a list, so express a whole dependency graph in one call rather than one link at a time.",
     withProjectId(LinkTicketsInputSchema).shape,
-    async ({ project_id, source_ticket_id, target_ticket_id, link_type }) => {
+    async ({ project_id, operation, links }) => {
       const db = resolveDb(project_id);
-      const link = linkTickets(db, source_ticket_id, target_ticket_id, link_type);
+      const removing = operation === "remove";
+      const applied = applyTicketLinks(db, links, removing);
       return {
-        content: [{ type: "text", text: JSON.stringify(link, null, 2) }],
-      };
-    }
-  );
-
-  server.tool(
-    "unlink_tickets",
-    "Remove a link between two tickets",
-    withProjectId(UnlinkTicketsInputSchema).shape,
-    async ({ project_id, source_ticket_id, target_ticket_id, link_type }) => {
-      const db = resolveDb(project_id);
-      unlinkTickets(db, source_ticket_id, target_ticket_id, link_type);
-      return {
-        content: [{ type: "text", text: "Link removed." }],
+        content: [
+          {
+            type: "text",
+            text: removing
+              ? `${links.length} link(s) removed.`
+              : JSON.stringify(applied, null, 2),
+          },
+        ],
       };
     }
   );

@@ -147,21 +147,10 @@ export const DeleteTicketInputSchema = z.object({
   ticket_id: z.string(),
 });
 
-export const StartTicketInputSchema = z.object({
+export const SetTicketStatusInputSchema = z.object({
   ticket_id: z.string(),
-});
-
-export const CompleteTicketInputSchema = z.object({
-  ticket_id: z.string(),
-  actual: z.string().optional(),
-});
-
-export const CancelTicketInputSchema = z.object({
-  ticket_id: z.string(),
-});
-
-export const ReopenTicketInputSchema = z.object({
-  ticket_id: z.string(),
+  status: StatusSchema,
+  actual: z.string().optional().describe("Time actually spent. Only recorded when status is 'done'."),
 });
 
 export const AddCommentInputSchema = z.object({
@@ -169,16 +158,21 @@ export const AddCommentInputSchema = z.object({
   content: z.string().min(1),
 });
 
-export const LinkTicketsInputSchema = z.object({
+export const TicketLinkPairSchema = z.object({
   source_ticket_id: z.string(),
   target_ticket_id: z.string(),
   link_type: LinkTypeSchema,
 });
 
-export const UnlinkTicketsInputSchema = z.object({
-  source_ticket_id: z.string(),
-  target_ticket_id: z.string(),
-  link_type: LinkTypeSchema,
+export const LinkTicketsInputSchema = z.object({
+  operation: z
+    .enum(["add", "remove"])
+    .optional()
+    .describe("Whether to create the links or delete them. Defaults to add."),
+  links: z
+    .array(TicketLinkPairSchema)
+    .min(1)
+    .describe("Every link to apply in one call. Pass the whole set at once rather than calling repeatedly."),
 });
 
 /**
@@ -201,20 +195,21 @@ export const FilterSchema = z
       "\"assignee IS NULL AND due_date < now()\"; \"'archived' NOT IN tags AND metadata.team = 'core'\"."
   );
 
-export const ListTicketsInputSchema = z.object({
+export const FindTicketsInputSchema = z.object({
+  query: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Free text to search for. Omit to list tickets instead. Searching ranks by relevance, so `sort`, " +
+        "`sort_direction`, and `offset` are ignored when this is set, and the result carries no `total`."
+    ),
+  mode: SearchModeSchema.optional().describe("Search strategy. Only applies alongside `query`. Defaults to hybrid."),
   filter: FilterSchema.optional(),
   sort: SortFieldSchema.optional(),
   sort_direction: SortDirectionSchema.optional(),
   limit: z.number().int().positive().optional(),
   offset: z.number().int().nonnegative().optional(),
-  verbosity: VerbositySchema.optional(),
-});
-
-export const SearchTicketsInputSchema = z.object({
-  query: z.string().min(1),
-  mode: SearchModeSchema.optional(),
-  filter: FilterSchema.optional(),
-  limit: z.number().int().positive().optional(),
   verbosity: VerbositySchema.optional(),
 });
 

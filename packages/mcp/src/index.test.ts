@@ -48,11 +48,22 @@ describe("Willet MCP stdio E2E", () => {
 
     expect(toolNames).toContain("init_project");
     expect(toolNames).toContain("create_ticket");
-    expect(toolNames).toContain("list_tickets");
-    expect(toolNames).toContain("search_tickets");
+    expect(toolNames).toContain("find_tickets");
     expect(toolNames).toContain("get_ticket");
-    expect(toolNames).toContain("complete_ticket");
+    expect(toolNames).toContain("set_ticket_status");
     expect(toolNames).toContain("link_tickets");
+
+    for (const removed of [
+      "list_tickets",
+      "search_tickets",
+      "start_ticket",
+      "complete_ticket",
+      "cancel_ticket",
+      "reopen_ticket",
+      "unlink_tickets",
+    ]) {
+      expect(toolNames).not.toContain(removed);
+    }
   });
 
   it("should create a project and manage tasks end-to-end", async () => {
@@ -86,7 +97,7 @@ describe("Willet MCP stdio E2E", () => {
 
     // List tasks — should contain our task
     const listResult = await client.callTool({
-      name: "list_tickets",
+      name: "find_tickets",
       arguments: { project_id: projectId },
     });
     const listText = (listResult.content as Array<{ text: string }>)[0].text;
@@ -103,8 +114,8 @@ describe("Willet MCP stdio E2E", () => {
 
     // Complete the task
     await client.callTool({
-      name: "complete_ticket",
-      arguments: { project_id: projectId, ticket_id: ticketId },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: ticketId, status: "done" },
     });
 
     // Verify it's completed
@@ -140,8 +151,8 @@ describe("Willet MCP stdio E2E", () => {
 
     // Start
     const startResult = await client.callTool({
-      name: "start_ticket",
-      arguments: { project_id: projectId, ticket_id: ticketId },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: ticketId, status: "in_progress" },
     });
     expect(
       (startResult.content as Array<{ text: string }>)[0].text
@@ -149,8 +160,8 @@ describe("Willet MCP stdio E2E", () => {
 
     // Cancel
     const cancelResult = await client.callTool({
-      name: "cancel_ticket",
-      arguments: { project_id: projectId, ticket_id: ticketId },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: ticketId, status: "cancelled" },
     });
     expect(
       (cancelResult.content as Array<{ text: string }>)[0].text
@@ -158,8 +169,8 @@ describe("Willet MCP stdio E2E", () => {
 
     // Reopen
     const reopenResult = await client.callTool({
-      name: "reopen_ticket",
-      arguments: { project_id: projectId, ticket_id: ticketId },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: ticketId, status: "open" },
     });
     expect(
       (reopenResult.content as Array<{ text: string }>)[0].text
@@ -167,8 +178,8 @@ describe("Willet MCP stdio E2E", () => {
 
     // Complete
     const completeResult = await client.callTool({
-      name: "complete_ticket",
-      arguments: { project_id: projectId, ticket_id: ticketId },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: ticketId, status: "done" },
     });
     expect(
       (completeResult.content as Array<{ text: string }>)[0].text
@@ -193,13 +204,13 @@ describe("Willet MCP stdio E2E", () => {
       .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
 
     await client.callTool({
-      name: "start_ticket",
-      arguments: { project_id: projectId, ticket_id: ticketId },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: ticketId, status: "in_progress" },
     });
 
     const reopenResult = await client.callTool({
-      name: "reopen_ticket",
-      arguments: { project_id: projectId, ticket_id: ticketId },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: ticketId, status: "open" },
     });
     const reopenText = (reopenResult.content as Array<{ text: string }>)[0].text;
     expect(reopenText).toContain('"status": "open"');
@@ -235,8 +246,8 @@ describe("Willet MCP stdio E2E", () => {
 
     // Reopening an already-open task should error.
     const dupResult = await client.callTool({
-      name: "reopen_ticket",
-      arguments: { project_id: projectId, ticket_id: ticketId },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: ticketId, status: "open" },
     });
     expect(dupResult.isError).toBe(true);
     expect(
@@ -244,7 +255,7 @@ describe("Willet MCP stdio E2E", () => {
     ).toContain("already open");
   });
 
-  it("should link and unlink tasks", async () => {
+  it("should add and remove a task link", async () => {
     const projectDir = join(dataDir, "link-project");
 
     const initResult = await client.callTool({
@@ -274,14 +285,20 @@ describe("Willet MCP stdio E2E", () => {
       name: "link_tickets",
       arguments: {
         project_id: projectId,
-        source_ticket_id: task1Id,
-        target_ticket_id: task2Id,
-        link_type: "blocks",
+        links: [
+          {
+            source_ticket_id: task1Id,
+            target_ticket_id: task2Id,
+            link_type: "blocks",
+          },
+        ],
       },
     });
-    expect((linkResult.content as Array<{ text: string }>)[0].text).toContain(
-      "blocks"
+    const created = JSON.parse(
+      (linkResult.content as Array<{ text: string }>)[0].text
     );
+    expect(created).toHaveLength(1);
+    expect(created[0].link_type).toBe("blocks");
 
     // Verify link shows up in get_ticket (included by default)
     const getResult = await client.callTool({
@@ -295,15 +312,164 @@ describe("Willet MCP stdio E2E", () => {
 
     // Unlink
     const unlinkResult = await client.callTool({
-      name: "unlink_tickets",
+      name: "link_tickets",
       arguments: {
         project_id: projectId,
-        source_ticket_id: task1Id,
-        target_ticket_id: task2Id,
-        link_type: "blocks",
+        operation: "remove",
+        links: [
+          {
+            source_ticket_id: task1Id,
+            target_ticket_id: task2Id,
+            link_type: "blocks",
+          },
+        ],
       },
     });
-    expect(unlinkResult.content).toBeTruthy();
+    expect((unlinkResult.content as Array<{ text: string }>)[0].text).toBe(
+      "1 link(s) removed."
+    );
+  });
+
+  describe("link_tickets batching", () => {
+    let projectId: string;
+    let ticketIds: string[];
+
+    async function ticketLinks(ticketId: string) {
+      const res = await client.callTool({
+        name: "get_ticket",
+        arguments: { project_id: projectId, ticket_id: ticketId },
+      });
+      const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+      return data.links as Array<{
+        source_ticket_id: string;
+        target_ticket_id: string;
+        link_type: string;
+      }>;
+    }
+
+    beforeAll(async () => {
+      const initResult = await client.callTool({
+        name: "init_project",
+        arguments: {
+          name: "Batch Link Project",
+          directory: join(dataDir, "batch-link-project"),
+        },
+      });
+      projectId = (initResult.content as Array<{ text: string }>)[0]
+        .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
+
+      ticketIds = [];
+      for (const title of ["Batch A", "Batch B", "Batch C", "Batch D"]) {
+        const res = await client.callTool({
+          name: "create_ticket",
+          arguments: { project_id: projectId, title },
+        });
+        ticketIds.push(
+          (res.content as Array<{ text: string }>)[0]
+            .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0]
+        );
+      }
+    });
+
+    it("applies multiple links in one call", async () => {
+      const [a, b, c, d] = ticketIds;
+      const res = await client.callTool({
+        name: "link_tickets",
+        arguments: {
+          project_id: projectId,
+          links: [
+            { source_ticket_id: a, target_ticket_id: b, link_type: "blocks" },
+            { source_ticket_id: a, target_ticket_id: c, link_type: "relates_to" },
+            { source_ticket_id: a, target_ticket_id: d, link_type: "duplicates" },
+          ],
+        },
+      });
+      expect(res.isError ?? false).toBe(false);
+      const created = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+      expect(created).toHaveLength(3);
+      expect(created.map((l: { link_type: string }) => l.link_type)).toEqual([
+        "blocks",
+        "relates_to",
+        "duplicates",
+      ]);
+
+      const links = await ticketLinks(a);
+      expect(links).toHaveLength(3);
+    });
+
+    it("removes multiple links in one call", async () => {
+      const [a, b, c] = ticketIds;
+      const res = await client.callTool({
+        name: "link_tickets",
+        arguments: {
+          project_id: projectId,
+          operation: "remove",
+          links: [
+            { source_ticket_id: a, target_ticket_id: b, link_type: "blocks" },
+            { source_ticket_id: a, target_ticket_id: c, link_type: "relates_to" },
+          ],
+        },
+      });
+      expect(res.isError ?? false).toBe(false);
+      expect((res.content as Array<{ text: string }>)[0].text).toBe(
+        "2 link(s) removed."
+      );
+
+      const links = await ticketLinks(a);
+      expect(links).toHaveLength(1);
+      expect(links[0].link_type).toBe("duplicates");
+    });
+
+    it("rolls back the whole batch when one pair is invalid", async () => {
+      const [a, b, c] = ticketIds;
+      const before = await ticketLinks(a);
+
+      const res = await client.callTool({
+        name: "link_tickets",
+        arguments: {
+          project_id: projectId,
+          links: [
+            { source_ticket_id: a, target_ticket_id: b, link_type: "blocks" },
+            { source_ticket_id: c, target_ticket_id: c, link_type: "blocks" },
+          ],
+        },
+      });
+      expect(res.isError).toBe(true);
+
+      expect(await ticketLinks(a)).toEqual(before);
+      expect(await ticketLinks(c)).toEqual([]);
+    });
+
+    it("rolls back the whole batch when a ticket does not exist", async () => {
+      const [a, b] = ticketIds;
+      const before = await ticketLinks(a);
+
+      const res = await client.callTool({
+        name: "link_tickets",
+        arguments: {
+          project_id: projectId,
+          links: [
+            { source_ticket_id: a, target_ticket_id: b, link_type: "relates_to" },
+            {
+              source_ticket_id: a,
+              target_ticket_id: "NONEXISTENT0000000000000000",
+              link_type: "blocks",
+            },
+          ],
+        },
+      });
+      expect(res.isError).toBe(true);
+
+      expect(await ticketLinks(a)).toEqual(before);
+    });
+
+    it("rejects an empty links array", async () => {
+      const res = await client.callTool({
+        name: "link_tickets",
+        arguments: { project_id: projectId, links: [] },
+      });
+      expect(res.isError).toBe(true);
+    });
   });
 
   it("should update a task", async () => {
@@ -383,7 +549,7 @@ describe("Willet MCP stdio E2E", () => {
     ).toContain("This is a test comment");
   });
 
-  it("should search tasks", async () => {
+  it("should find tasks with and without a query", async () => {
     const projectDir = join(dataDir, "search-project");
 
     const initResult = await client.callTool({
@@ -411,14 +577,35 @@ describe("Willet MCP stdio E2E", () => {
       },
     });
 
-    // Search for auth-related tasks
+    // Without a query, find_tickets lists everything
+    const listResult = await client.callTool({
+      name: "find_tickets",
+      arguments: { project_id: projectId },
+    });
+    const listed = JSON.parse(
+      (listResult.content as Array<{ text: string }>)[0].text
+    );
+    const listedTitles = listed.tickets.map((t: { title: string }) => t.title);
+    expect(listedTitles).toContain("Implement authentication flow");
+    expect(listedTitles).toContain("Fix database migration");
+    expect(listed.total).toBe(listed.tickets.length);
+
+    // With a query, it searches — same `tickets` key, but no `total`, since
+    // relevance search cannot count matches beyond `limit`
     const searchResult = await client.callTool({
-      name: "search_tickets",
+      name: "find_tickets",
       arguments: { project_id: projectId, query: "authentication" },
     });
-    const searchText = (searchResult.content as Array<{ text: string }>)[0]
-      .text;
-    expect(searchText).toContain("authentication");
+    const found = JSON.parse(
+      (searchResult.content as Array<{ text: string }>)[0].text
+    );
+    expect(found).not.toHaveProperty("total");
+    expect(found.tickets.length).toBeGreaterThan(0);
+    expect(
+      found.tickets.some((t: { title: string }) =>
+        t.title.includes("authentication")
+      )
+    ).toBe(true);
   });
 
   it("should not crash on queries containing FTS5 special syntax", async () => {
@@ -445,7 +632,7 @@ describe("Willet MCP stdio E2E", () => {
     // operator (`*`), and an unbalanced quote.
     for (const query of ["in:progress", "deploy OR", "deploy*", 'deploy"']) {
       const searchResult = await client.callTool({
-        name: "search_tickets",
+        name: "find_tickets",
         arguments: { project_id: projectId, query },
       });
       expect(searchResult.isError ?? false).toBe(false);
@@ -453,14 +640,14 @@ describe("Willet MCP stdio E2E", () => {
 
     // The column-filter form should still find the matching ticket.
     const matchResult = await client.callTool({
-      name: "search_tickets",
+      name: "find_tickets",
       arguments: { project_id: projectId, query: "in:progress" },
     });
     const matchText = (matchResult.content as Array<{ text: string }>)[0].text;
     expect(matchText).toContain("Deploy in progress");
   });
 
-  it("should list and filter tasks by status", async () => {
+  it("should find and filter tasks by status", async () => {
     const projectDir = join(dataDir, "filter-project");
 
     const initResult = await client.callTool({
@@ -478,8 +665,8 @@ describe("Willet MCP stdio E2E", () => {
     const task1Id = (task1Result.content as Array<{ text: string }>)[0]
       .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
     await client.callTool({
-      name: "complete_ticket",
-      arguments: { project_id: projectId, ticket_id: task1Id },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: task1Id, status: "done" },
     });
 
     // Create another task that stays open
@@ -490,7 +677,7 @@ describe("Willet MCP stdio E2E", () => {
 
     // List only open tasks
     const openList = await client.callTool({
-      name: "list_tickets",
+      name: "find_tickets",
       arguments: { project_id: projectId, filter: "status = 'open'" },
     });
     const openText = (openList.content as Array<{ text: string }>)[0].text;
@@ -499,7 +686,7 @@ describe("Willet MCP stdio E2E", () => {
 
     // List only done tasks
     const doneList = await client.callTool({
-      name: "list_tickets",
+      name: "find_tickets",
       arguments: { project_id: projectId, filter: "status = 'done'" },
     });
     const doneText = (doneList.content as Array<{ text: string }>)[0].text;
@@ -529,8 +716,8 @@ describe("Willet MCP stdio E2E", () => {
     const task2Id = (task2Result.content as Array<{ text: string }>)[0]
       .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
     await client.callTool({
-      name: "complete_ticket",
-      arguments: { project_id: projectId, ticket_id: task2Id },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: task2Id, status: "done" },
     });
 
     const statsResult = await client.callTool({
@@ -557,7 +744,7 @@ describe("Willet MCP stdio E2E", () => {
     const { tools } = await client.listTools();
     const createTool = tools.find((t) => t.name === "create_ticket")!;
     const updateTool = tools.find((t) => t.name === "update_ticket")!;
-    const listTool = tools.find((t) => t.name === "list_tickets")!;
+    const listTool = tools.find((t) => t.name === "find_tickets")!;
 
     expect(createTool.inputSchema.properties).not.toHaveProperty("assignee");
     expect(updateTool.inputSchema.properties).not.toHaveProperty("assignee");
@@ -596,9 +783,9 @@ describe("Willet MCP stdio E2E", () => {
     });
     expect((getResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
 
-    // list_tickets
+    // find_tickets
     const listResult = await client.callTool({
-      name: "list_tickets",
+      name: "find_tickets",
       arguments: { project_id: projectId },
     });
     expect((listResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
@@ -620,31 +807,27 @@ describe("Willet MCP stdio E2E", () => {
     const ticketId = (createResult.content as Array<{ text: string }>)[0]
       .text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
 
-    // start_ticket
     const startResult = await client.callTool({
-      name: "start_ticket",
-      arguments: { project_id: projectId, ticket_id: ticketId },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: ticketId, status: "in_progress" },
     });
     expect((startResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
 
-    // complete_ticket
     const completeResult = await client.callTool({
-      name: "complete_ticket",
-      arguments: { project_id: projectId, ticket_id: ticketId },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: ticketId, status: "done" },
     });
     expect((completeResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
 
-    // reopen_ticket
     const reopenResult = await client.callTool({
-      name: "reopen_ticket",
-      arguments: { project_id: projectId, ticket_id: ticketId },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: ticketId, status: "open" },
     });
     expect((reopenResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
 
-    // cancel_ticket
     const cancelResult = await client.callTool({
-      name: "cancel_ticket",
-      arguments: { project_id: projectId, ticket_id: ticketId },
+      name: "set_ticket_status",
+      arguments: { project_id: projectId, ticket_id: ticketId, status: "cancelled" },
     });
     expect((cancelResult.content as Array<{ text: string }>)[0].text).not.toContain("assignee");
   });
@@ -668,7 +851,7 @@ describe("Willet MCP stdio E2E", () => {
     });
 
     const searchResult = await client.callTool({
-      name: "search_tickets",
+      name: "find_tickets",
       arguments: { project_id: projectId, query: "widget" },
     });
     const searchText = (searchResult.content as Array<{ text: string }>)[0].text;
@@ -706,9 +889,13 @@ describe("Willet MCP stdio E2E", () => {
       name: "link_tickets",
       arguments: {
         project_id: projectId,
-        source_ticket_id: parentId,
-        target_ticket_id: childId,
-        link_type: "blocks",
+        links: [
+          {
+            source_ticket_id: parentId,
+            target_ticket_id: childId,
+            link_type: "blocks",
+          },
+        ],
       },
     });
 
@@ -758,7 +945,7 @@ describe("Willet MCP stdio E2E", () => {
 
   it("should return error for invalid project ID", async () => {
     const result = await client.callTool({
-      name: "list_tickets",
+      name: "find_tickets",
       arguments: { project_id: "NONEXISTENT0000000000000000" },
     });
     expect(result.isError).toBe(true);
@@ -809,17 +996,21 @@ describe("Willet MCP stdio E2E", () => {
         name: "link_tickets",
         arguments: {
           project_id: verbProjectId,
-          source_ticket_id: parentId,
-          target_ticket_id: childId,
-          link_type: "blocks",
+          links: [
+            {
+              source_ticket_id: parentId,
+              target_ticket_id: childId,
+              link_type: "blocks",
+            },
+          ],
         },
       });
     });
 
-    describe("list_tickets", () => {
+    describe("find_tickets (list path)", () => {
       it("short: strips description/metadata/timestamps, truncates title+tags", async () => {
         const res = await client.callTool({
-          name: "list_tickets",
+          name: "find_tickets",
           arguments: { project_id: verbProjectId, verbosity: "short" },
         });
         const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
@@ -850,7 +1041,7 @@ describe("Willet MCP stdio E2E", () => {
 
       it("detailed (default): includes all fields, description truncated with ellipsis", async () => {
         const res = await client.callTool({
-          name: "list_tickets",
+          name: "find_tickets",
           arguments: { project_id: verbProjectId },
         });
         const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
@@ -866,7 +1057,7 @@ describe("Willet MCP stdio E2E", () => {
 
       it("full: returns everything verbatim, no truncation", async () => {
         const res = await client.callTool({
-          name: "list_tickets",
+          name: "find_tickets",
           arguments: { project_id: verbProjectId, verbosity: "full" },
         });
         const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
@@ -878,10 +1069,10 @@ describe("Willet MCP stdio E2E", () => {
       });
     });
 
-    describe("search_tickets", () => {
+    describe("find_tickets (search path)", () => {
       it("short: trims payload but preserves score", async () => {
         const res = await client.callTool({
-          name: "search_tickets",
+          name: "find_tickets",
           arguments: {
             project_id: verbProjectId,
             query: "authentication",
@@ -889,8 +1080,9 @@ describe("Willet MCP stdio E2E", () => {
           },
         });
         const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
-        expect(data.length).toBeGreaterThan(0);
-        for (const t of data) {
+        expect(data).not.toHaveProperty("total");
+        expect(data.tickets.length).toBeGreaterThan(0);
+        for (const t of data.tickets) {
           expect(t).toHaveProperty("score");
           expect(t).not.toHaveProperty("description");
           expect(t).not.toHaveProperty("created_at");
@@ -899,7 +1091,7 @@ describe("Willet MCP stdio E2E", () => {
 
       it("full: includes description and score", async () => {
         const res = await client.callTool({
-          name: "search_tickets",
+          name: "find_tickets",
           arguments: {
             project_id: verbProjectId,
             query: "authentication",
@@ -907,7 +1099,7 @@ describe("Willet MCP stdio E2E", () => {
           },
         });
         const data = JSON.parse((res.content as Array<{ text: string }>)[0].text);
-        const match = data.find((t: { id: string }) => t.id === parentId);
+        const match = data.tickets.find((t: { id: string }) => t.id === parentId);
         expect(match).toBeDefined();
         expect(match.description).toBe(LONG_DESCRIPTION);
         expect(match).toHaveProperty("score");

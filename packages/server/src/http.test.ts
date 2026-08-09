@@ -407,8 +407,13 @@ describe("Willet HTTP Server E2E", () => {
 
       expect(toolNames).toContain("init_project");
       expect(toolNames).toContain("create_ticket");
-      expect(toolNames).toContain("list_tickets");
-      expect(toolNames).toContain("search_tickets");
+      expect(toolNames).toContain("find_tickets");
+      expect(toolNames).toContain("set_ticket_status");
+      expect(toolNames).toContain("link_tickets");
+      expect(toolNames).not.toContain("list_tickets");
+      expect(toolNames).not.toContain("search_tickets");
+      expect(toolNames).not.toContain("start_ticket");
+      expect(toolNames).not.toContain("unlink_tickets");
     });
 
     it("should create a project and tickets via MCP tools", async () => {
@@ -450,7 +455,7 @@ describe("Willet HTTP Server E2E", () => {
 
       // List tickets
       const listRes = (await mcpPost(
-        mcpToolCall(4, "list_tickets", { project_id: projectId })
+        mcpToolCall(4, "find_tickets", { project_id: projectId })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(listRes.result).toBeTruthy();
       expect(listRes.result!.content[0].text).toContain("Fix the widget");
@@ -468,9 +473,10 @@ describe("Willet HTTP Server E2E", () => {
 
       // Complete ticket
       const completeRes = (await mcpPost(
-        mcpToolCall(6, "complete_ticket", {
+        mcpToolCall(6, "set_ticket_status", {
           project_id: projectId,
           ticket_id: ticketId,
+          status: "done",
         })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(completeRes.result).toBeTruthy();
@@ -616,9 +622,9 @@ describe("Willet HTTP Server E2E", () => {
       };
       const createTool = body.result.tools.find((t) => t.name === "create_ticket")!;
       const updateTool = body.result.tools.find((t) => t.name === "update_ticket")!;
-      const listTool = body.result.tools.find((t) => t.name === "list_tickets")!;
+      const listTool = body.result.tools.find((t) => t.name === "find_tickets")!;
 
-      // create/update expose assignee directly; list filters on it via `filter`.
+      // create/update expose assignee directly; find filters on it via `filter`.
       expect(createTool.inputSchema.properties).toHaveProperty("assignee");
       expect(updateTool.inputSchema.properties).toHaveProperty("assignee");
       expect(listTool.inputSchema.properties).toHaveProperty("filter");
@@ -702,9 +708,9 @@ describe("Willet HTTP Server E2E", () => {
       )) as { result?: { content: Array<{ text: string }> } };
       expect(getRes.result!.content[0].text).toContain('"assignee": "alice"');
 
-      // list_tickets
+      // find_tickets
       const listRes = (await mcpPost(
-        mcpToolCall(id(), "list_tickets", { project_id: projectId })
+        mcpToolCall(id(), "find_tickets", { project_id: projectId })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(listRes.result!.content[0].text).toContain('"assignee": "alice"');
     });
@@ -762,7 +768,7 @@ describe("Willet HTTP Server E2E", () => {
 
       // Filter for alice
       const aliceRes = (await mcpPost(
-        mcpToolCall(id(), "list_tickets", { project_id: projectId, filter: "assignee = 'alice'" })
+        mcpToolCall(id(), "find_tickets", { project_id: projectId, filter: "assignee = 'alice'" })
       )) as { result?: { content: Array<{ text: string }> } };
       const aliceText = aliceRes.result!.content[0].text;
       expect(aliceText).toContain("Alice's ticket");
@@ -770,7 +776,7 @@ describe("Willet HTTP Server E2E", () => {
 
       // Filter for bob
       const bobRes = (await mcpPost(
-        mcpToolCall(id(), "list_tickets", { project_id: projectId, filter: "assignee = 'bob'" })
+        mcpToolCall(id(), "find_tickets", { project_id: projectId, filter: "assignee = 'bob'" })
       )) as { result?: { content: Array<{ text: string }> } };
       const bobText = bobRes.result!.content[0].text;
       expect(bobText).toContain("Bob's ticket");
@@ -798,7 +804,7 @@ describe("Willet HTTP Server E2E", () => {
 
       // Filter for unassigned
       const unassignedRes = (await mcpPost(
-        mcpToolCall(id(), "list_tickets", { project_id: projectId, filter: "assignee IS NULL" })
+        mcpToolCall(id(), "find_tickets", { project_id: projectId, filter: "assignee IS NULL" })
       )) as { result?: { content: Array<{ text: string }> } };
       const text = unassignedRes.result!.content[0].text;
       expect(text).toContain("Was assigned");
@@ -815,27 +821,31 @@ describe("Willet HTTP Server E2E", () => {
       )) as { result?: { content: Array<{ text: string }> } };
       const ticketId = createRes.result!.content[0].text.match(/[0-9A-HJKMNP-TV-Z]{26}/)![0];
 
-      // start_ticket
       const startRes = (await mcpPost(
-        mcpToolCall(id(), "start_ticket", { project_id: projectId, ticket_id: ticketId })
+        mcpToolCall(id(), "set_ticket_status", {
+          project_id: projectId, ticket_id: ticketId, status: "in_progress",
+        })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(startRes.result!.content[0].text).toContain('"assignee": "alice"');
 
-      // complete_ticket
       const completeRes = (await mcpPost(
-        mcpToolCall(id(), "complete_ticket", { project_id: projectId, ticket_id: ticketId })
+        mcpToolCall(id(), "set_ticket_status", {
+          project_id: projectId, ticket_id: ticketId, status: "done",
+        })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(completeRes.result!.content[0].text).toContain('"assignee": "alice"');
 
-      // reopen_ticket
       const reopenRes = (await mcpPost(
-        mcpToolCall(id(), "reopen_ticket", { project_id: projectId, ticket_id: ticketId })
+        mcpToolCall(id(), "set_ticket_status", {
+          project_id: projectId, ticket_id: ticketId, status: "open",
+        })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(reopenRes.result!.content[0].text).toContain('"assignee": "alice"');
 
-      // cancel_ticket
       const cancelRes = (await mcpPost(
-        mcpToolCall(id(), "cancel_ticket", { project_id: projectId, ticket_id: ticketId })
+        mcpToolCall(id(), "set_ticket_status", {
+          project_id: projectId, ticket_id: ticketId, status: "cancelled",
+        })
       )) as { result?: { content: Array<{ text: string }> } };
       expect(cancelRes.result!.content[0].text).toContain('"assignee": "alice"');
     });
