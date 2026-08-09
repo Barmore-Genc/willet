@@ -6,8 +6,6 @@ import {
   createArticle,
   getArticleById,
   updateArticle,
-  archiveArticle,
-  unarchiveArticle,
   listArticles,
 } from "@willet/shared/dist/db/queries.js";
 
@@ -112,27 +110,30 @@ describe("updateArticle", () => {
 });
 
 describe("archive / unarchive", () => {
+  const setStatus = (id: string, status: "active" | "archived") =>
+    updateArticle(db, { article_id: id, status });
+
   it("flips status both ways without deleting anything", async () => {
     const article = await createArticle(db, seed);
 
-    expect((await archiveArticle(db, article.id)).status).toBe("archived");
-    expect((await unarchiveArticle(db, article.id)).status).toBe("active");
+    expect((await setStatus(article.id, "archived")).status).toBe("archived");
+    expect((await setStatus(article.id, "active")).status).toBe("active");
     expect(getArticleById(db, article.id)!.content).toBe(seed.content);
   });
 
-  it("rejects redundant transitions", async () => {
+  it("treats a redundant transition as a no-op", async () => {
     const article = await createArticle(db, seed);
 
-    await expect(unarchiveArticle(db, article.id)).rejects.toThrow("Article is not archived");
-    await archiveArticle(db, article.id);
-    await expect(archiveArticle(db, article.id)).rejects.toThrow("Article is already archived");
+    expect((await setStatus(article.id, "active")).updated_at).toBe(article.updated_at);
+    await setStatus(article.id, "archived");
+    expect((await setStatus(article.id, "archived")).status).toBe("archived");
   });
 
   it("leaves the embedding alone — archiving is not an edit", async () => {
     const article = await createArticle(db, seed);
     embedCalls.length = 0;
 
-    await archiveArticle(db, article.id);
+    await setStatus(article.id, "archived");
 
     expect(embedCalls).toEqual([]);
   });
@@ -176,7 +177,7 @@ describe("listArticles", () => {
 
   it("hides archived articles unless asked for them", async () => {
     const { b } = await seedThree();
-    await archiveArticle(db, b.id);
+    await updateArticle(db, { article_id: b.id, status: "archived" });
 
     expect(listArticles(db).total).toBe(2);
     expect(listArticles(db, { status: "active" }).total).toBe(2);

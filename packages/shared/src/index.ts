@@ -50,8 +50,6 @@ export {
   createArticle,
   getArticleById,
   updateArticle,
-  archiveArticle,
-  unarchiveArticle,
   listArticles,
 } from "./db/queries.js";
 

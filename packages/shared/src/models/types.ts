@@ -263,18 +263,13 @@ export const UpdateArticleInputSchema = z.object({
   title: z.string().min(1).optional(),
   content: z.string().min(1).optional(),
   tags: z.array(z.string()).optional(),
+  status: ArticleStatusSchema.optional().describe(
+    "Set 'archived' to drop the article from the default listing, or 'active' to restore it. Nothing is deleted either way."
+  ),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const GetArticleInputSchema = z.object({
-  article_id: z.string(),
-});
-
-export const ArchiveArticleInputSchema = z.object({
-  article_id: z.string(),
-});
-
-export const UnarchiveArticleInputSchema = z.object({
   article_id: z.string(),
 });
 

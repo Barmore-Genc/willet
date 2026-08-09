@@ -1,22 +1,18 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
-  ArchiveArticleInputSchema,
   CreateArticleInputSchema,
   GetArticleInputSchema,
   ListArticlesInputSchema,
-  UnarchiveArticleInputSchema,
   UpdateArticleInputSchema,
   withProjectId,
   type Article,
 } from "../models/types.js";
 import {
-  archiveArticle,
   createArticle,
   getArticleById,
   getProject,
   getProjectDb,
   listArticles,
-  unarchiveArticle,
   updateArticle,
 } from "../db/queries.js";
 
@@ -58,31 +54,11 @@ export function registerArticleTools(server: McpServer): void {
 
   server.tool(
     "update_article",
-    "Edit an article in place. Pass the full new content; updates replace, they do not append.",
+    "Edit an article in place, or archive and restore it with `status`. Pass the full new content; updates replace, they do not append.",
     withProjectId(UpdateArticleInputSchema).shape,
     async ({ project_id, ...input }) => {
       const db = resolveDb(project_id);
       return json(await updateArticle(db, input));
-    }
-  );
-
-  server.tool(
-    "archive_article",
-    "Archive an article so list_articles stops returning it by default. Reversible via unarchive_article; nothing is deleted.",
-    withProjectId(ArchiveArticleInputSchema).shape,
-    async ({ project_id, article_id }) => {
-      const db = resolveDb(project_id);
-      return json(await archiveArticle(db, article_id));
-    }
-  );
-
-  server.tool(
-    "unarchive_article",
-    "Restore an archived article to active",
-    withProjectId(UnarchiveArticleInputSchema).shape,
-    async ({ project_id, article_id }) => {
-      const db = resolveDb(project_id);
-      return json(await unarchiveArticle(db, article_id));
     }
   );
 

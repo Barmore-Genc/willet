@@ -1002,26 +1002,6 @@ export async function updateArticle(
   return updated;
 }
 
-export async function archiveArticle(
-  db: Database.Database,
-  articleId: string
-): Promise<Article> {
-  const article = getArticleById(db, articleId);
-  if (!article) throw new Error(`Article not found: ${articleId}`);
-  if (article.status === "archived") throw new Error("Article is already archived");
-  return updateArticle(db, { article_id: articleId, status: "archived" });
-}
-
-export async function unarchiveArticle(
-  db: Database.Database,
-  articleId: string
-): Promise<Article> {
-  const article = getArticleById(db, articleId);
-  if (!article) throw new Error(`Article not found: ${articleId}`);
-  if (article.status === "active") throw new Error("Article is not archived");
-  return updateArticle(db, { article_id: articleId, status: "active" });
-}
-
 export interface ListArticlesOptions {
   /** Defaults to "active": archived articles are retired and stay out of the way. */
   status?: ArticleStatusFilter;
