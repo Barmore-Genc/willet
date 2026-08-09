@@ -851,7 +851,7 @@ describe("full export/import round-trip", () => {
   it("should import a legacy v1 archive (tasks-*.json with parent_task_id)", async () => {
     // Build a v1-shaped archive manually to simulate exports from before the
     // task→ticket rename.
-    const { default: archiver } = await import("archiver");
+    const { ZipArchive } = await import("archiver");
     const { createWriteStream } = await import("node:fs");
     const v1Path = join(tmpDir, "legacy-v1.zip");
 
@@ -911,7 +911,7 @@ describe("full export/import round-trip", () => {
     };
 
     await new Promise<void>((resolve, reject) => {
-      const archive = archiver("zip", { zlib: { level: 6 } });
+      const archive = new ZipArchive({ zlib: { level: 6 } });
       const output = createWriteStream(v1Path);
       output.on("close", resolve);
       output.on("error", reject);
