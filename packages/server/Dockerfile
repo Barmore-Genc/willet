@@ -1,4 +1,4 @@
-FROM node:20-slim AS builder
+FROM node:22-trixie-slim AS builder
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
@@ -23,7 +23,7 @@ COPY packages/server/tsconfig.build.json packages/server/
 COPY packages/server/docker-entrypoint.sh packages/server/
 
 # Build shared and api-spec first (server depends on both), then server
-RUN pnpm --filter @willet/shared run build:server && pnpm --filter @willet/api-spec run build && pnpm --filter @willet/server run build
+RUN pnpm --filter @willet/shared run build && pnpm --filter @willet/api-spec run build && pnpm --filter @willet/server run build
 
 # Assemble a self-contained deployment of the server: pnpm copies the built
 # workspace deps (@willet/shared, @willet/api-spec) as real packages into a
@@ -35,7 +35,7 @@ RUN node -e "import('/deploy/node_modules/@willet/shared/dist/embeddings/local.j
 
 # ---
 
-FROM node:20-slim
+FROM node:22-trixie-slim
 WORKDIR /app
 
 # Copy the self-contained deployment. The server package's files land at the

@@ -2,6 +2,9 @@ node_modules/
 dist/
 coverage/
 
+# Views copied into @willet/mcp at build time
+packages/mcp/views/
+
 # Machine-specific config
 .mcp.json
 .claude/settings.local.json

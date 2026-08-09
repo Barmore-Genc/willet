@@ -11,7 +11,8 @@
   },
   "files": [
     "dist/",
-    "bin/"
+    "bin/",
+    "views/"
   ],
   "repository": {
     "type": "git",
@@ -23,7 +24,7 @@
   },
   "license": "AGPL-3.0-only",
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "rm -rf dist views",
     "check": "tsc --noEmit",
     "build": "node build.js",
     "start": "node dist/index.js",
@@ -31,7 +32,7 @@
     "test": "vitest run"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
