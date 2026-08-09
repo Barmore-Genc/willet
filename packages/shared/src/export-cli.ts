@@ -8,6 +8,7 @@ import {
   closeAll,
 } from "./db/queries.js";
 import { exportProject, importFromZip } from "./export.js";
+import { initEmbeddings } from "./embeddings/local.js";
 
 function printExportUsage(): void {
   console.log(`Usage: willet-export [options]
@@ -126,6 +127,10 @@ export async function runImportCli(args: string[]): Promise<void> {
     const targetProjectId = opts.get("project");
 
     console.log(`Importing from ${basename(resolvedPath)}...`);
+
+    // Imported tickets get embeddings generated, which throws unless the model
+    // is loaded first. Nothing else in this CLI path initializes it.
+    await initEmbeddings();
 
     const results = await importFromZip(
       resolvedPath,

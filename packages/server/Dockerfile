@@ -1,4 +1,4 @@
-FROM node:20-slim AS builder
+FROM node:22-trixie-slim AS builder
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
@@ -35,7 +35,7 @@ RUN node -e "import('/deploy/node_modules/@willet/shared/dist/embeddings/local.j
 
 # ---
 
-FROM node:20-slim
+FROM node:22-trixie-slim
 WORKDIR /app
 
 # Copy the self-contained deployment. The server package's files land at the

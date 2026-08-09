@@ -23,7 +23,7 @@
   },
   "license": "AGPL-3.0-only",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
