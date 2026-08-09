@@ -4,6 +4,7 @@ import { closeAll } from "./db/queries.js";
 import { registerProjectTools } from "./tools/projects.js";
 import { registerTicketTools } from "./tools/tickets.js";
 import { registerLinkTools } from "./tools/links.js";
+import { registerArticleTools } from "./tools/articles.js";
 import { registerQueryTools } from "./tools/queries.js";
 import { registerVizTools } from "./tools/viz.js";
 import { buildInstructions, registerResources } from "./instructions.js";
@@ -46,6 +47,10 @@ export {
   getTicketGraph,
   getProjectStats,
   listTags,
+  createArticle,
+  getArticleById,
+  updateArticle,
+  listArticles,
 } from "./db/queries.js";
 
 export {
@@ -60,8 +65,15 @@ export {
   SortDirectionSchema,
   GroupBySchema,
   VerbositySchema,
+  ArticleStatusSchema,
+  ArticleStatusFilterSchema,
+  ArticleSortFieldSchema,
 } from "./models/types.js";
 export type {
+  Article,
+  ArticleStatus,
+  ArticleStatusFilter,
+  ArticleSortField,
   Project,
   Ticket,
   TicketHistory,
@@ -127,6 +139,7 @@ export async function createServer(options?: { embeddingModel?: string | InitEmb
   registerProjectTools(server);
   registerTicketTools(server, toolOptions);
   registerLinkTools(server);
+  registerArticleTools(server);
   registerQueryTools(server, toolOptions);
   registerVizTools(server, toolOptions);
   registerResources(server, mode);
