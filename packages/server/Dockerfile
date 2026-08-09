@@ -23,7 +23,7 @@ COPY packages/server/tsconfig.build.json packages/server/
 COPY packages/server/docker-entrypoint.sh packages/server/
 
 # Build shared and api-spec first (server depends on both), then server
-RUN pnpm --filter @willet/shared run build:server && pnpm --filter @willet/api-spec run build && pnpm --filter @willet/server run build
+RUN pnpm --filter @willet/shared run build && pnpm --filter @willet/api-spec run build && pnpm --filter @willet/server run build
 
 # Assemble a self-contained deployment of the server: pnpm copies the built
 # workspace deps (@willet/shared, @willet/api-spec) as real packages into a
