@@ -21,14 +21,14 @@
     "@willet/api-spec": "workspace:*",
     "@willet/shared": "workspace:*",
     "express": "^5.2.1",
-    "smol-toml": "^1.7.1",
+    "smol-toml": "^1.8.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.2.0",
-    "tsx": "^4.23.11",
-    "typescript": "^6.0.2",
-    "vitest": "^4.1.10"
+    "tsx": "^4.23.12",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
   }
 }
