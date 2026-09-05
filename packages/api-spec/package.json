@@ -23,9 +23,9 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
-    "openapi-typescript": "^7.9.1",
+    "@types/node": "^26.4.0",
+    "openapi-typescript": "^7.13.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }
