@@ -35,11 +35,11 @@
     "d3-selection": "^3.0.0",
     "d3-zoom": "^3.0.0",
     "node-stream-zip": "^1.16.0",
-    "onnxruntime-node": "1.27.0",
+    "onnxruntime-node": "1.29.0",
     "sqlite-vec": "^0.1.9",
     "typescript-parsec": "^0.3.4",
     "ulid": "^3.0.2",
-    "zod": "^4.5.1"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/archiver": "^8.0.0",
@@ -48,7 +48,7 @@
     "@types/d3-force": "^3.0.10",
     "@types/d3-selection": "^3.0.11",
     "@types/d3-zoom": "^3.0.8",
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.4.1",
     "cross-env": "^10.1.0",
     "typescript": "^6.0.3",
     "vite": "^8.2.2",
