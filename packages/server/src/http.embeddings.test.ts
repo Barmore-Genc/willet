@@ -21,6 +21,9 @@ const { closeAll } = await import("@willet/shared");
 describe("startHttpServer embeddings initialization", () => {
   let handle: Awaited<ReturnType<typeof startHttpServer>>;
   let dataDir: string;
+  // Captured right after startup, since Vitest clears mock call history before
+  // each test runs — asserting on the live mock here would always see 0 calls.
+  let initEmbeddingsCallsAtStartup = 0;
 
   beforeAll(async () => {
     dataDir = mkdtempSync(join(tmpdir(), "willet-embed-test-"));
@@ -52,6 +55,8 @@ describe("startHttpServer embeddings initialization", () => {
       handle.server.on("listening", resolve);
       if (handle.server.listening) resolve();
     });
+
+    initEmbeddingsCallsAtStartup = initEmbeddings.mock.calls.length;
   });
 
   afterAll(async () => {
@@ -62,6 +67,6 @@ describe("startHttpServer embeddings initialization", () => {
   });
 
   it("initializes embeddings at startup, without waiting for an MCP connection", () => {
-    expect(initEmbeddings).toHaveBeenCalledTimes(1);
+    expect(initEmbeddingsCallsAtStartup).toBe(1);
   });
 });
